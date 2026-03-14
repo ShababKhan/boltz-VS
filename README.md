@@ -16,7 +16,7 @@
 
 Boltz is a family of models for biomolecular interaction prediction. Boltz-1 was the first fully open source model to approach AlphaFold3 accuracy. Our latest work Boltz-2 is a new biomolecular foundation model that goes beyond AlphaFold3 and Boltz-1 by jointly modeling complex structures and binding affinities, a critical component towards accurate molecular design. Boltz-2 is the first deep learning model to approach the accuracy of physics-based free-energy perturbation (FEP) methods, while running 1000x faster — making accurate in silico screening practical for early-stage drug discovery.
 
-All the code and weights are provided under MIT license, making them freely available for both academic and commercial uses. For more information about the model, see the [Boltz-1](https://doi.org/10.1101/2024.11.19.624167) and [Boltz-2](https://doi.org/10.1101/2025.06.14.659707) technical reports. To discuss updates, tools and applications join our [Slack channel](https://boltz.bio/join-slack).
+However, one limitation that becomes obvious when trying to run virtual screen campaigns is that ALL calculations are repeated for every ligand in the library, even if the target protein remains the same. Thus, this project aims to address that limitation by caching the protein receptor calculations so that they can be re-used in combination with the individual calculations for each ligand.
 
 ## Installation
 
@@ -31,7 +31,7 @@ pip install boltz[cuda] -U
 or directly from GitHub for daily updates:
 
 ```
-git clone https://github.com/jwohlwend/boltz.git
+git clone https://github.com/ShababKhan/boltz-VS.git
 cd boltz; pip install -e .[cuda]
 ```
 
@@ -50,6 +50,17 @@ boltz predict input_path --use_msa_server
 
 ### Binding Affinity Prediction
 There are two main predictions in the affinity output: `affinity_pred_value` and `affinity_probability_binary`. They are trained on largely different datasets, with different supervisions, and should be used in different contexts. The `affinity_probability_binary` field should be used to detect binders from decoys, for example in a hit-discovery stage. Its value ranges from 0 to 1 and represents the predicted probability that the ligand is a binder. The `affinity_pred_value` aims to measure the specific affinity of different binders and how this changes with small modifications of the molecule. This should be used in ligand optimization stages such as hit-to-lead and lead-optimization. It reports a binding affinity value as `log10(IC50)`, derived from an `IC50` measured in `μM`. More details on how to run affinity predictions and parse the output can be found in our [prediction instructions](docs/prediction.md).
+
+### High-Throughput Virtual Screening (HTVS)
+For efficiently running large scale virtual screens against a target protein, Boltz provides an optimized High-Throughput Virtual Screening mode. Instead of redundantly recomputing the multiple sequence alignment (MSA) and templates for the target on every run, the target's latent representations are processed once into memory and reused for every sequence in a ligand library.
+
+To use the HTVS mode, provide your protein target as standard YAML (which can optionally include constraints/templates) alongside the `--ligand_library` option specifying a `.csv`, `.smi`, or `.sdf` file of ligand smiles:
+
+```
+boltz predict target_protein.yaml --ligand_library path/to/ligands.smi --use_msa_server
+```
+
+When using this mode, the output structures and affinities will be automatically generated and saved sequentially, drastically accelerating throughput over massive ligand libraries.
 
 ## Authentication to MSA Server
 
@@ -80,7 +91,7 @@ On recent NVIDIA GPUs, Boltz leverages the acceleration provided by [NVIDIA  cuE
 
 ## License
 
-Our model and code are released under MIT License, and can be freely used for both academic and commercial purposes.
+The Boltz model and code are released under MIT License, and can be freely used for both academic and commercial purposes.
 
 
 ## Cite
