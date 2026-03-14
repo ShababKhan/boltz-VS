@@ -1,9 +1,0 @@
-rm -f parse_*.py
-rm -f test_*.py
-rm -f make_combine_feats.py
-rm -f rewrite_predict.py
-rm -f get_imports.py
-rm -f htvs_patch.py
-rm -f view_boltz_forward.py
-rm -f search_htvs.py
-rm -f search_issue.py
