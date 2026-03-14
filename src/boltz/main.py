@@ -25,6 +25,7 @@ from boltz.data.module.inferencev2 import Boltz2InferenceDataModule
 from boltz.data.mol import load_canonicals
 from boltz.data.msa.mmseqs2 import run_mmseqs2
 from boltz.data.parse.a3m import parse_a3m
+import csv
 from boltz.data.parse.csv import parse_csv
 from boltz.data.parse.fasta import parse_fasta
 from boltz.data.parse.yaml import parse_yaml
@@ -257,6 +258,32 @@ def download_boltz2(cache: Path) -> None:
                     raise RuntimeError(msg) from e
                 continue
 
+
+def get_ligands_from_library(path: str) -> list[str]:
+    """Extract smiles from a ligand library."""
+    from rdkit import Chem
+    ligands = []
+    p = Path(path)
+    if not p.exists():
+        return ligands
+    if p.suffix.lower() == '.csv':
+        with open(p, 'r') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if 'smiles' in row:
+                    ligands.append(row['smiles'])
+                elif 'SMILES' in row:
+                    ligands.append(row['SMILES'])
+    elif p.suffix.lower() in ['.smi', '.smiles']:
+        with open(p, 'r') as f:
+            for line in f:
+                ligands.append(line.split()[0])
+    elif p.suffix.lower() == '.sdf':
+        suppl = Chem.SDMolSupplier(str(p))
+        for mol in suppl:
+            if mol is not None:
+                ligands.append(Chem.MolToSmiles(mol))
+    return ligands
 
 def get_cache_path() -> str:
     """Determine the cache path, prioritising the BOLTZ_CACHE environment variable.
@@ -1039,6 +1066,12 @@ def cli() -> None:
     is_flag=True,
     help=" to dump the s and z embeddings into a npz file. Default is False.",
 )
+@click.option(
+    "--ligand_library",
+    type=click.Path(exists=True),
+    help="A path to a library of ligands (.csv, .smi, or .sdf) to be screened.",
+    default=None,
+)
 def predict(  # noqa: C901, PLR0915, PLR0912
     data: str,
     out_dir: str,
@@ -1077,6 +1110,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     num_subsampled_msa: int = 1024,
     no_kernels: bool = False,
     write_embeddings: bool = False,
+    ligand_library: Optional[str] = None,
 ) -> None:
     """Run predictions with Boltz."""
     # If cpu, write a friendly warning
@@ -1159,6 +1193,266 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     # Process inputs
     ccd_path = cache / "ccd.pkl"
     mol_dir = cache / "mols"
+
+    if ligand_library is not None:
+        click.echo("Ligand library mode enabled. Running HTVS mode.")
+        import tempfile
+        import yaml
+        import copy
+        from boltz.htvs.combine import combine_feats
+
+        ligands = get_ligands_from_library(ligand_library)
+        click.echo(f"Found {len(ligands)} ligands in library.")
+
+        # Load the base protein yaml
+        if not data[0].suffix.lower() in (".yml", ".yaml"):
+            raise ValueError("HTVS mode requires a .yaml file as input.")
+
+        with open(data[0]) as f:
+            base_yaml = yaml.safe_load(f)
+
+        # Process the base protein FIRST
+        process_inputs(
+            data=data,
+            out_dir=out_dir,
+            ccd_path=ccd_path,
+            mol_dir=mol_dir,
+            use_msa_server=use_msa_server,
+            msa_server_url=msa_server_url,
+            msa_pairing_strategy=msa_pairing_strategy,
+            msa_server_username=msa_server_username,
+            msa_server_password=msa_server_password,
+            api_key_header=api_key_header,
+            api_key_value=api_key_value,
+            boltz2=model == "boltz2",
+            preprocessing_threads=preprocessing_threads,
+            max_msa_seqs=max_msa_seqs,
+        )
+
+        manifest = Manifest.load(out_dir / "processed" / "manifest.json")
+        processed_dir = out_dir / "processed"
+        data_module = Boltz2InferenceDataModule(
+            manifest=manifest,
+            target_dir=processed_dir / "structures",
+            msa_dir=processed_dir / "msa",
+            mol_dir=mol_dir,
+            num_workers=num_workers,
+            constraints_dir=(processed_dir / "constraints") if (processed_dir / "constraints").exists() else None,
+            template_dir=(processed_dir / "templates") if (processed_dir / "templates").exists() else None,
+            extra_mols_dir=(processed_dir / "mols") if (processed_dir / "mols").exists() else None,
+            override_method=method,
+        )
+
+        dataset = data_module.predict_dataloader().dataset
+        # Get protein features
+        feats_prot = dataset[0]
+        from boltz.data.module.inferencev2 import collate
+        feats_prot = collate([feats_prot])
+
+        # Load model
+        if checkpoint is None:
+            if model == "boltz2":
+                checkpoint = cache / "boltz2_conf.ckpt"
+            else:
+                checkpoint = cache / "boltz1_conf.ckpt"
+
+        predict_args = {
+            "recycling_steps": recycling_steps,
+            "sampling_steps": sampling_steps,
+            "diffusion_samples": diffusion_samples,
+            "max_parallel_samples": max_parallel_samples,
+            "write_confidence_summary": True,
+            "write_full_pae": write_full_pae,
+            "write_full_pde": write_full_pde,
+        }
+
+        if model == "boltz2":
+            diffusion_params = Boltz2DiffusionParams()
+            step_scale = 1.5 if step_scale is None else step_scale
+            diffusion_params.step_scale = step_scale
+            pairformer_args = PairformerArgsV2()
+        else:
+            diffusion_params = BoltzDiffusionParams()
+            step_scale = 1.638 if step_scale is None else step_scale
+            diffusion_params.step_scale = step_scale
+            pairformer_args = PairformerArgs()
+
+        msa_args = MSAModuleArgs(
+            subsample_msa=subsample_msa,
+            num_subsampled_msa=num_subsampled_msa,
+            use_paired_feature=model == "boltz2",
+        )
+
+        steering_args = BoltzSteeringParams()
+        steering_args.fk_steering = use_potentials
+        steering_args.physical_guidance_update = use_potentials
+
+        model_cls = Boltz2 if model == "boltz2" else Boltz1
+        model_module = model_cls.load_from_checkpoint(
+            checkpoint,
+            strict=True,
+            predict_args=predict_args,
+            map_location="cpu",
+            diffusion_process_args=asdict(diffusion_params),
+            ema=False,
+            use_kernels=not no_kernels,
+            pairformer_args=asdict(pairformer_args),
+            msa_args=asdict(msa_args),
+            steering_args=asdict(steering_args),
+        )
+        # Convert lightning accelerator to PyTorch device
+        if accelerator == "gpu":
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        elif accelerator == "tpu":
+            device = torch.device("xla")
+        else:
+            device = torch.device("cpu")
+
+        model_module = model_module.to(device)
+        model_module.eval()
+
+        pred_writer = BoltzWriter(
+            data_dir=processed_dir / "structures",
+            output_dir=out_dir / "predictions",
+            output_format=output_format,
+            boltz2=model == "boltz2",
+            write_embeddings=write_embeddings,
+        )
+
+        affinity_pred_writer = None
+        affinity_model_module = None
+        has_affinity = False
+        for prop in base_yaml.get("properties", []):
+            if "affinity" in prop:
+                has_affinity = True
+
+        if has_affinity:
+            affinity_checkpoint = affinity_checkpoint or (cache / "boltz2_aff.ckpt")
+            predict_affinity_args = {
+                "recycling_steps": 5,
+                "sampling_steps": sampling_steps_affinity,
+                "diffusion_samples": diffusion_samples_affinity,
+                "max_parallel_samples": 1,
+                "write_confidence_summary": False,
+                "write_full_pae": False,
+                "write_full_pde": False,
+            }
+
+            affinity_model_module = Boltz2.load_from_checkpoint(
+                affinity_checkpoint,
+                strict=True,
+                predict_args=predict_affinity_args,
+                map_location="cpu",
+                diffusion_process_args=asdict(diffusion_params),
+                ema=False,
+                pairformer_args=asdict(pairformer_args),
+                msa_args=asdict(msa_args),
+                steering_args=asdict(steering_args),
+                affinity_mw_correction=affinity_mw_correction,
+            )
+            affinity_model_module = affinity_model_module.to(device)
+            affinity_model_module.eval()
+            affinity_pred_writer = BoltzAffinityWriter(
+                data_dir=processed_dir / "structures",
+                output_dir=out_dir / "predictions",
+            )
+
+        # We will loop over ligands, create a dummy yaml, process it, and combine features
+        tmp_dir = out_dir / "tmp_ligands"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+
+        from tqdm import tqdm
+
+        # A dummy mock trainer to pass to the writer
+        class MockTrainer:
+            pass
+        mock_trainer = MockTrainer()
+
+        for idx, lig_smiles in enumerate(tqdm(ligands)):
+            lig_id = f"ligand_{idx}"
+            yaml_path = tmp_dir / f"{lig_id}.yaml"
+
+            lig_yaml = {
+                "version": 1,
+                "sequences": [{"ligand": {"id": "L", "smiles": lig_smiles}}]
+            }
+            if has_affinity:
+                lig_yaml["properties"] = [{"affinity": {"binder": "L"}}]
+
+            with open(yaml_path, "w") as f:
+                yaml.safe_dump(lig_yaml, f)
+
+            try:
+                # Process the ligand
+                process_inputs(
+                    data=[yaml_path],
+                    out_dir=tmp_dir,
+                    ccd_path=ccd_path,
+                    mol_dir=mol_dir,
+                    use_msa_server=False,
+                    msa_server_url=msa_server_url,
+                    msa_pairing_strategy=msa_pairing_strategy,
+                    msa_server_username=None,
+                    msa_server_password=None,
+                    api_key_header=None,
+                    api_key_value=None,
+                    boltz2=model == "boltz2",
+                    preprocessing_threads=1,
+                    max_msa_seqs=max_msa_seqs,
+                )
+
+                lig_manifest = Manifest.load(tmp_dir / "processed" / "manifest.json")
+                lig_data_module = Boltz2InferenceDataModule(
+                    manifest=lig_manifest,
+                    target_dir=tmp_dir / "processed" / "structures",
+                    msa_dir=tmp_dir / "processed" / "msa",
+                    mol_dir=mol_dir,
+                    num_workers=0,
+                )
+
+                lig_dataset = lig_data_module.predict_dataloader().dataset
+                feats_lig = collate([lig_dataset[0]])
+
+                # Combine
+                feats_complex = combine_feats(feats_prot, feats_lig)
+
+                # Move to device
+                feats_complex = data_module.transfer_batch_to_device(feats_complex, device, 0)
+
+                # Inference
+                with torch.no_grad():
+                    pred = model_module.predict_step(feats_complex, 0)
+                pred_writer.write_on_batch_end(mock_trainer, model_module, pred, None, feats_complex, 0, 0)
+
+                if has_affinity:
+                    # Need to process features again for affinity, crop it maybe?
+                    # The simple way is to pass the affinity module through Boltz2InferenceDataModule
+                    lig_data_module_aff = Boltz2InferenceDataModule(
+                        manifest=lig_manifest,
+                        target_dir=out_dir / "predictions", # target_dir is where the pre_affinity struct is saved!
+                        msa_dir=tmp_dir / "processed" / "msa",
+                        mol_dir=mol_dir,
+                        num_workers=0,
+                        affinity=True,
+                        override_method="other"
+                    )
+
+                    try:
+                        feats_lig_aff = collate([lig_data_module_aff.predict_dataloader().dataset[0]])
+                        feats_complex_aff = combine_feats(feats_prot, feats_lig_aff)
+                        feats_complex_aff = lig_data_module_aff.transfer_batch_to_device(feats_complex_aff, device, 0)
+
+                        with torch.no_grad():
+                            pred_aff = affinity_model_module.predict_step(feats_complex_aff, 0)
+                        affinity_pred_writer.write_on_batch_end(mock_trainer, affinity_model_module, pred_aff, None, feats_complex_aff, 0, 0)
+                    except Exception as e:
+                        click.echo(f"Affinity inference failed for {lig_id}: {e}")
+
+            except Exception as e:
+                click.echo(f"Skipping {lig_id} due to error: {e}")
+
+        return
+
     process_inputs(
         data=data,
         out_dir=out_dir,
