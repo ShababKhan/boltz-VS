@@ -1400,19 +1400,15 @@ def process_atom_features(
         idx_list = ensemble_features["ensemble_ref_idxs"]
 
     # Create distogram
-    disto_target = torch.zeros(L, L, len(idx_list), num_bins)  # TODO1
+    disto_target = torch.zeros(L, L, len(idx_list), num_bins)
 
-    # disto_target = torch.zeros(L, L, num_bins)
     for i, e_idx in enumerate(idx_list):
         t_center = torch.Tensor(disto_coords_ensemble[:, e_idx, :])
         t_dists = torch.cdist(t_center, t_center)
         boundaries = torch.linspace(min_dist, max_dist, num_bins - 1)
         distogram = (t_dists.unsqueeze(-1) > boundaries).sum(dim=-1).long()
-        # disto_target += one_hot(distogram, num_classes=num_bins)
-        disto_target[:, :, i, :] = one_hot(distogram, num_classes=num_bins)  # TODO1
+        disto_target[:, :, i, :] = one_hot(distogram, num_classes=num_bins)
 
-    # Normalize distogram
-    # disto_target = disto_target / disto_target.sum(-1)[..., None]  # remove TODO1
     atom_data = np.concatenate(atom_data)
     atom_name = np.concatenate(atom_name)
     atom_element = np.concatenate(atom_element)
