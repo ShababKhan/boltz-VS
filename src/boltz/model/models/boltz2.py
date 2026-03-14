@@ -435,6 +435,7 @@ class Boltz2(LightningModule):
             # Compute pairwise mask
             mask = feats["token_pad_mask"].float()
             pair_mask = mask[:, :, None] * mask[:, None, :]
+
             if self.run_trunk_and_structure:
                 for i in range(recycling_steps + 1):
                     with torch.set_grad_enabled(
