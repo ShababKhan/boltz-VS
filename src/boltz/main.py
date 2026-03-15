@@ -1244,6 +1244,10 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         )
 
         dataset = data_module.predict_dataloader().dataset
+        if len(dataset) == 0:
+            msg = "Failed to process the input base protein. The input file may be invalid, or MSAs may be missing. Have you tried using the `--use_msa_server` flag?"
+            raise RuntimeError(msg)
+
         # Get protein features
         feats_prot = dataset[0]
         from boltz.data.module.inferencev2 import collate
@@ -1472,6 +1476,9 @@ def predict(  # noqa: C901, PLR0915, PLR0912
 
     # Load manifest
     manifest = Manifest.load(out_dir / "processed" / "manifest.json")
+    if not manifest.records:
+        msg = "Failed to process the inputs. The input files may be invalid, or MSAs may be missing. Have you tried using the `--use_msa_server` flag?"
+        raise RuntimeError(msg)
 
     # Filter out existing predictions
     filtered_manifest = filter_inputs_structure(
