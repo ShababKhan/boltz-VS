@@ -1,0 +1,3 @@
+## 2024-11-20 - Exception Catching vs Explicit Conditionals in `gemmi.cif.Block` attribute parsing
+**Learning:** Using `with contextlib.suppress(Exception):` to handle potentially missing tables or values during mmCIF parsing was significantly degrading performance (15-20x slower than bounds checking) and masking logic errors in the code. Because `suppress` halts block execution entirely when the first exception is raised, downstream keys within the same loop weren't being correctly processed.
+**Action:** Always prefer explicit length checking on `block.find([key])` when parsing gemmi CIF tables over wrapping loops in exception suppressors to guarantee complete data extraction and optimize critical parsing paths.
