@@ -143,10 +143,16 @@ def get_dates(block: gemmi.cif.Block) -> tuple[str, str, str]:
     deposited = "_pdbx_database_status.recvd_initial_deposition_date"
     revision = "_pdbx_audit_revision_history.revision_date"
     deposit_date = revision_date = release_date = ""
-    with contextlib.suppress(Exception):
-        deposit_date = block.find([deposited])[0][0]
-        release_date = block.find([revision])[0][0]
-        revision_date = block.find([revision])[-1][0]
+
+    # Explicit bounds checking avoids slow exception-handling overhead from contextlib.suppress
+    deposited_table = block.find([deposited])
+    if len(deposited_table) > 0:
+        deposit_date = deposited_table[0][0]
+
+    revision_table = block.find([revision])
+    if len(revision_table) > 0:
+        release_date = revision_table[0][0]
+        revision_date = revision_table[-1][0]
 
     return deposit_date, release_date, revision_date
 
@@ -171,9 +177,12 @@ def get_resolution(block: gemmi.cif.Block) -> float:
         "_em_3d_reconstruction.resolution",
         "_reflns.d_resolution_high",
     ):
-        with contextlib.suppress(Exception):
-            resolution = float(block.find([res_key])[0].str(0))
-            break
+        table = block.find([res_key])
+        if len(table) > 0:
+            # Explicit length check avoids slow exception handling when keys are missing
+            with contextlib.suppress(Exception):
+                resolution = float(table[0].str(0))
+                break
     return resolution
 
 
@@ -193,8 +202,9 @@ def get_method(block: gemmi.cif.Block) -> str:
     """
     method = ""
     method_key = "_exptl.method"
-    with contextlib.suppress(Exception):
-        methods = block.find([method_key])
+    # Using length check instead of try/except avoids exception-handling overhead
+    methods = block.find([method_key])
+    if len(methods) > 0:
         method = ",".join([m.str(0).lower() for m in methods])
 
     return method
@@ -222,16 +232,21 @@ def get_experiment_conditions(
         "_exptl_crystal_grow.temp",
         "_pdbx_nmr_exptl_sample_conditions.temperature",
     ]
+    # Length checks prevent triggering slow exceptions on missing properties
     for key in keys_t:
-        with contextlib.suppress(Exception):
-            temperature = float(block.find([key])[0][0])
-            break
+        table = block.find([key])
+        if len(table) > 0:
+            with contextlib.suppress(Exception):
+                temperature = float(table[0][0])
+                break
 
     keys_ph = ["_exptl_crystal_grow.pH", "_pdbx_nmr_exptl_sample_conditions.pH"]
-    with contextlib.suppress(Exception):
-        for key in keys_ph:
-            ph = float(block.find([key])[0][0])
-            break
+    for key in keys_ph:
+        table = block.find([key])
+        if len(table) > 0:
+            with contextlib.suppress(Exception):
+                ph = float(table[0][0])
+                break
 
     return temperature, ph
 
