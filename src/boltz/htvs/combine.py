@@ -1,5 +1,9 @@
+import copy
+
 import torch
+import torch.nn.functional as F
 from torch import Tensor
+
 
 def combine_feats(fp: dict[str, Tensor], fl: dict[str, Tensor]) -> dict[str, Tensor]:
     """Combine the protein and ligand feature dictionaries."""
@@ -35,37 +39,16 @@ def combine_feats(fp: dict[str, Tensor], fl: dict[str, Tensor]) -> dict[str, Ten
                 out[key] = torch.cat([fp[key], fl[key]], dim=1)
 
     # 2. Token bonds (B, L, L)
-    if "token_bonds" in fp and "token_bonds" in fl:
-        B, Lp, _ = fp["token_bonds"].shape
-        _, Ll, _ = fl["token_bonds"].shape
-        tb = torch.zeros((B, Lp + Ll, Lp + Ll), dtype=fp["token_bonds"].dtype, device=fp["token_bonds"].device)
-        tb[:, :Lp, :Lp] = fp["token_bonds"]
-        tb[:, Lp:, Lp:] = fl["token_bonds"]
-        out["token_bonds"] = tb
-
-    if "type_bonds" in fp and "type_bonds" in fl:
-        B, Lp, _ = fp["type_bonds"].shape
-        _, Ll, _ = fl["type_bonds"].shape
-        tb = torch.zeros((B, Lp + Ll, Lp + Ll), dtype=fp["type_bonds"].dtype, device=fp["type_bonds"].device)
-        tb[:, :Lp, :Lp] = fp["type_bonds"]
-        tb[:, Lp:, Lp:] = fl["type_bonds"]
-        out["type_bonds"] = tb
-
-    if "contact_conditioning" in fp and "contact_conditioning" in fl:
-        B, Lp, _ = fp["contact_conditioning"].shape
-        _, Ll, _ = fl["contact_conditioning"].shape
-        tb = torch.zeros((B, Lp + Ll, Lp + Ll), dtype=fp["contact_conditioning"].dtype, device=fp["contact_conditioning"].device)
-        tb[:, :Lp, :Lp] = fp["contact_conditioning"]
-        tb[:, Lp:, Lp:] = fl["contact_conditioning"]
-        out["contact_conditioning"] = tb
-
-    if "contact_threshold" in fp and "contact_threshold" in fl:
-        B, Lp, _ = fp["contact_threshold"].shape
-        _, Ll, _ = fl["contact_threshold"].shape
-        tb = torch.zeros((B, Lp + Ll, Lp + Ll), dtype=fp["contact_threshold"].dtype, device=fp["contact_threshold"].device)
-        tb[:, :Lp, :Lp] = fp["contact_threshold"]
-        tb[:, Lp:, Lp:] = fl["contact_threshold"]
-        out["contact_threshold"] = tb
+    for key in ("token_bonds", "type_bonds", "contact_conditioning", "contact_threshold"):
+        if key in fp and key in fl:
+            fp_tensor = fp[key]
+            fl_tensor = fl[key]
+            B, Lp, _ = fp_tensor.shape
+            _, Ll, _ = fl_tensor.shape
+            tb = torch.zeros((B, Lp + Ll, Lp + Ll), dtype=fp_tensor.dtype, device=fp_tensor.device)
+            tb[:, :Lp, :Lp] = fp_tensor
+            tb[:, Lp:, Lp:] = fl_tensor
+            out[key] = tb
 
     # 3. Atom features (B, A)
     atom_1d = [
@@ -94,18 +77,26 @@ def combine_feats(fp: dict[str, Tensor], fl: dict[str, Tensor]) -> dict[str, Ten
     ]
     for key in msa_keys:
         if key in fp and key in fl:
-            # Fl MSA is usually empty (1, L_lig) and Fp is (N, L_prot). We must pad Fl.
-            B, N_p, Lp = fp[key].shape[:3]
-            _, N_l, Ll = fl[key].shape[:3]
+            fp_tensor = fp[key]
+            fl_tensor = fl[key]
+            B, N_p, Lp = fp_tensor.shape[:3]
+            _, N_l, Ll = fl_tensor.shape[:3]
             N_max = max(N_p, N_l)
 
-            p_pad = torch.zeros((B, N_max, Lp) + fp[key].shape[3:], dtype=fp[key].dtype, device=fp[key].device)
-            p_pad[:, :N_p, ...] = fp[key]
-
-            l_pad = torch.zeros((B, N_max, Ll) + fl[key].shape[3:], dtype=fl[key].dtype, device=fl[key].device)
-            l_pad[:, :N_l, ...] = fl[key]
-
-            out[key] = torch.cat([p_pad, l_pad], dim=2)
+            if N_p == N_max and N_l == N_max:
+                pass
+            else:
+                if N_p < N_max:
+                    pad_p = [0] * (2 * (fp_tensor.ndim - 1))
+                    pad_idx = 2 * (fp_tensor.ndim - 2) + 1
+                    pad_p[pad_idx] = N_max - N_p
+                    fp_tensor = F.pad(fp_tensor, pad_p)
+                if N_l < N_max:
+                    pad_l = [0] * (2 * (fl_tensor.ndim - 1))
+                    pad_idx = 2 * (fl_tensor.ndim - 2) + 1
+                    pad_l[pad_idx] = N_max - N_l
+                    fl_tensor = F.pad(fl_tensor, pad_l)
+            out[key] = torch.cat([fp_tensor, fl_tensor], dim=2)
 
     # 5. Templates (B, N, L, ...)
     tmpl_keys = [
@@ -115,17 +106,26 @@ def combine_feats(fp: dict[str, Tensor], fl: dict[str, Tensor]) -> dict[str, Ten
     ]
     for key in tmpl_keys:
         if key in fp and key in fl:
-            B, N_p, Lp = fp[key].shape[:3]
-            _, N_l, Ll = fl[key].shape[:3]
+            fp_tensor = fp[key]
+            fl_tensor = fl[key]
+            B, N_p, Lp = fp_tensor.shape[:3]
+            _, N_l, Ll = fl_tensor.shape[:3]
             N_max = max(N_p, N_l)
 
-            p_pad = torch.zeros((B, N_max, Lp) + fp[key].shape[3:], dtype=fp[key].dtype, device=fp[key].device)
-            p_pad[:, :N_p, ...] = fp[key]
-
-            l_pad = torch.zeros((B, N_max, Ll) + fl[key].shape[3:], dtype=fl[key].dtype, device=fl[key].device)
-            l_pad[:, :N_l, ...] = fl[key]
-
-            out[key] = torch.cat([p_pad, l_pad], dim=2)
+            if N_p == N_max and N_l == N_max:
+                pass
+            else:
+                if N_p < N_max:
+                    pad_p = [0] * (2 * (fp_tensor.ndim - 1))
+                    pad_idx = 2 * (fp_tensor.ndim - 2) + 1
+                    pad_p[pad_idx] = N_max - N_p
+                    fp_tensor = F.pad(fp_tensor, pad_p)
+                if N_l < N_max:
+                    pad_l = [0] * (2 * (fl_tensor.ndim - 1))
+                    pad_idx = 2 * (fl_tensor.ndim - 2) + 1
+                    pad_l[pad_idx] = N_max - N_l
+                    fl_tensor = F.pad(fl_tensor, pad_l)
+            out[key] = torch.cat([fp_tensor, fl_tensor], dim=2)
 
     # Copy other keys from fp that don't need concatenation
     for key in fp:
@@ -153,7 +153,6 @@ def combine_feats(fp: dict[str, Tensor], fl: dict[str, Tensor]) -> dict[str, Ten
                 out["crop_to_all_atom_map"].append(p_m)
 
     if "record" in fp and "record" in fl:
-        import copy
         new_records = []
         for p_rec, l_rec in zip(fp["record"], fl["record"]):
             c_rec = copy.deepcopy(p_rec)
