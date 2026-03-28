@@ -1,4 +1,5 @@
 import contextlib
+import itertools
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from typing import Optional
@@ -454,16 +455,16 @@ def compute_geometry_constraints(mol: Mol, idx_map):
     )
 
     constraints = []
-    for i, j in zip(*np.triu_indices(mol.GetNumAtoms(), k=1)):
-        if i in idx_map and j in idx_map:
-            constraint = ParsedRDKitBoundsConstraint(
-                atom_idxs=(idx_map[i], idx_map[j]),
-                is_bond=tuple(sorted([i, j])) in bonds,
-                is_angle=tuple(sorted([i, j])) in angles,
-                upper_bound=bounds[i, j],
-                lower_bound=bounds[j, i],
-            )
-            constraints.append(constraint)
+    # Bolt ⚡: Faster pair generation strictly over present atoms using itertools
+    for i, j in itertools.combinations(sorted(idx_map.keys()), 2):
+        constraint = ParsedRDKitBoundsConstraint(
+            atom_idxs=(idx_map[i], idx_map[j]),
+            is_bond=tuple(sorted([i, j])) in bonds,
+            is_angle=tuple(sorted([i, j])) in angles,
+            upper_bound=bounds[i, j],
+            lower_bound=bounds[j, i],
+        )
+        constraints.append(constraint)
     return constraints
 
 
