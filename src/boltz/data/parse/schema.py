@@ -1,3 +1,4 @@
+import itertools
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -20,7 +21,6 @@ from boltz.data import const
 from boltz.data.mol import load_molecules
 from boltz.data.parse.mmcif import parse_mmcif
 from boltz.data.parse.pdb import parse_pdb
-
 from boltz.data.types import (
     AffinityInfo,
     Atom,
@@ -326,16 +326,16 @@ def compute_geometry_constraints(mol: Mol, idx_map):
     )
 
     constraints = []
-    for i, j in zip(*np.triu_indices(mol.GetNumAtoms(), k=1)):
-        if i in idx_map and j in idx_map:
-            constraint = ParsedRDKitBoundsConstraint(
-                atom_idxs=(idx_map[i], idx_map[j]),
-                is_bond=tuple(sorted([i, j])) in bonds,
-                is_angle=tuple(sorted([i, j])) in angles,
-                upper_bound=bounds[i, j],
-                lower_bound=bounds[j, i],
-            )
-            constraints.append(constraint)
+    # Bolt ⚡: Faster pair generation strictly over present atoms using itertools
+    for i, j in itertools.combinations(sorted(idx_map.keys()), 2):
+        constraint = ParsedRDKitBoundsConstraint(
+            atom_idxs=(idx_map[i], idx_map[j]),
+            is_bond=tuple(sorted([i, j])) in bonds,
+            is_angle=tuple(sorted([i, j])) in angles,
+            upper_bound=bounds[i, j],
+            lower_bound=bounds[j, i],
+        )
+        constraints.append(constraint)
     return constraints
 
 
@@ -933,9 +933,8 @@ def token_spec_to_ids(
         # Non-polymer chains are indexed by atom name
         _, _, atom_idx = atom_idx_map[(chain_name, 0, residue_index_or_atom_name)]
         return (chain_to_idx[chain_name], atom_idx)
-    else:
-        # Polymer chains are indexed by residue index
-        return chain_to_idx[chain_name], residue_index_or_atom_name - 1
+    # Polymer chains are indexed by residue index
+    return chain_to_idx[chain_name], residue_index_or_atom_name - 1
 
 
 def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
@@ -1203,10 +1202,10 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
 
                     # Add error and warning messaging when computing affinity with ligands too large
                     if ref_mol.GetNumAtoms() > 128:
-                        msg = f"The ligand for affinity is too large, ligands with more than 128 atoms are not " \
-                              f"supported in the affinity prediction module"
+                        msg = "The ligand for affinity is too large, ligands with more than 128 atoms are not " \
+                              "supported in the affinity prediction module"
                         raise ValueError(msg)
-                    elif ref_mol.GetNumAtoms() > 56:
+                    if ref_mol.GetNumAtoms() > 56:
                         print("WARNING: the ligand used for affinity calculation is larger than 56 heavy-atoms, which "
                               "was the maximum during training, therefore the affinity output might be inaccurate.")
 
@@ -1265,9 +1264,9 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
             if affinity:
                 # Add error and warning messaging when computing affinity with ligands too large
                 if mol_no_h.GetNumAtoms() > 128:
-                    msg = f"The ligand for affinity is too large, ligands with more than 128 atoms are not supported in the affinity prediction module"
+                    msg = "The ligand for affinity is too large, ligands with more than 128 atoms are not supported in the affinity prediction module"
                     raise ValueError(msg)
-                elif mol_no_h.GetNumAtoms() > 56:
+                if mol_no_h.GetNumAtoms() > 56:
                     print("WARNING: the ligand used for affinity calculation is larger than 56 heavy-atoms, "
                           "which was the maximum during training, therefore the affinity output might be inaccurate.")
 
@@ -1516,7 +1515,7 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
     for constraint in constraints:
         if "bond" in constraint:
             if "atom1" not in constraint["bond"] or "atom2" not in constraint["bond"]:
-                msg = f"Bond constraint was not properly specified"
+                msg = "Bond constraint was not properly specified"
                 raise ValueError(msg)
 
             c1, r1, a1 = tuple(constraint["bond"]["atom1"])
@@ -1529,16 +1528,16 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                 "binder" not in constraint["pocket"]
                 or "contacts" not in constraint["pocket"]
             ):
-                msg = f"Pocket constraint was not properly specified"
+                msg = "Pocket constraint was not properly specified"
                 raise ValueError(msg)
 
             if len(pocket_constraints) > 0 and not boltz_2:
-                msg = f"Only one pocket binders is supported in Boltz-1!"
+                msg = "Only one pocket binders is supported in Boltz-1!"
                 raise ValueError(msg)
 
             max_distance = constraint["pocket"].get("max_distance", 6.0)
             if max_distance != 6.0 and not boltz_2:
-                msg = f"Max distance != 6.0 is not supported in Boltz-1!"
+                msg = "Max distance != 6.0 is not supported in Boltz-1!"
                 raise ValueError(msg)
 
             binder = constraint["pocket"]["binder"]
@@ -1564,11 +1563,11 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                 "token1" not in constraint["contact"]
                 or "token2" not in constraint["contact"]
             ):
-                msg = f"Contact constraint was not properly specified"
+                msg = "Contact constraint was not properly specified"
                 raise ValueError(msg)
 
             if not boltz_2:
-                msg = f"Contact constraint is not supported in Boltz-1!"
+                msg = "Contact constraint is not supported in Boltz-1!"
                 raise ValueError(msg)
 
             max_distance = constraint["contact"].get("max_distance", 6.0)
@@ -1634,7 +1633,7 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
             template_chain_ids is not None
             and chain_ids is not None
         ):
-           
+
                 if len(template_chain_ids) == len(chain_ids):
                      if len(template_chain_ids) > 0 and len(chain_ids) > 0:
                         matched = True
