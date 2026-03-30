@@ -1,0 +1,3 @@
+## 2024-05-18 - [Optimizing sequence deduplication for multiple sequence alignments]
+**Learning:** When processing large datasets like multiple sequence alignments (MSAs), O(N²) list membership checks (`item in list`) and `.index()` lookups for deduplication can cause severe performance bottlenecks, as demonstrated in `src/boltz/data/msa/mmseqs2.py`.
+**Action:** Use O(N) dictionary-based hash maps to track unique items and indices instead to prevent quadratic scaling on large datasets.
