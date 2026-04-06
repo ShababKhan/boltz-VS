@@ -523,8 +523,12 @@ def get_chain_symmetries(cropped, max_n_symmetries=100):
     all_coords = np.concatenate(all_coords, axis=0)
     # Compute backmapping from token to all coords
     crop_to_all_atom_map = []
+
+    # Precompute dictionary mapping to avoid O(N^2) list lookups
+    chain_asym_id_to_idx = {asym_id: i for i, asym_id in enumerate(chain_asym_id)}
+
     for token in cropped.tokens:
-        chain_idx = chain_asym_id.index(token["asym_id"])
+        chain_idx = chain_asym_id_to_idx[token["asym_id"]]
         start = (
             chain_atom_idx[chain_idx] - original_atom_idx[chain_idx] + token["atom_idx"]
         )
