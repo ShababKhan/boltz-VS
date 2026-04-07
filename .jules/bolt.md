@@ -1,0 +1,3 @@
+## 2025-02-18 - Replacing O(N²) list indexing in MSA deduplication
+**Learning:** In `src/boltz/data/msa/mmseqs2.py`, deduplicating sequences and keeping track of their original indices using a list comprehension with `.index()` (`[seqs_unique.index(seq) for seq in seqs]`) causes an O(N²) bottleneck for large datasets (e.g., when `seqs` is very long, as multiple sequence alignments can be).
+**Action:** Replace the `list.append` if-not-in loop and the list `.index()` comprehension with O(N) dict-based approaches (e.g., `dict.fromkeys()` for deduplication and a mapping dict for index lookup) to speed up MSA processing.
