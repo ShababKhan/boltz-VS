@@ -1,4 +1,3 @@
-import contextlib
 from collections import defaultdict
 from dataclasses import dataclass, replace
 from typing import Optional
@@ -140,13 +139,20 @@ def get_dates(block: gemmi.cif.Block) -> tuple[str, str, str]:
         The last revision date.
 
     """
+    # Performance optimization: Replace try/catch and contextlib.suppress
+    # with explicit bound checking for faster table processing in mmcif parsing
     deposited = "_pdbx_database_status.recvd_initial_deposition_date"
     revision = "_pdbx_audit_revision_history.revision_date"
     deposit_date = revision_date = release_date = ""
-    with contextlib.suppress(Exception):
-        deposit_date = block.find([deposited])[0][0]
-        release_date = block.find([revision])[0][0]
-        revision_date = block.find([revision])[-1][0]
+
+    deposited_table = block.find([deposited])
+    if len(deposited_table) > 0:
+        deposit_date = deposited_table[0][0]
+
+    revision_table = block.find([revision])
+    if len(revision_table) > 0:
+        release_date = revision_table[0][0]
+        revision_date = revision_table[-1][0]
 
     return deposit_date, release_date, revision_date
 
@@ -165,15 +171,21 @@ def get_resolution(block: gemmi.cif.Block) -> float:
         The resolution.
 
     """
+    # Performance optimization: explicit bound checking is significantly faster
+    # than exception handling for missing keys in loops
     resolution = 0.0
     for res_key in (
         "_refine.ls_d_res_high",
         "_em_3d_reconstruction.resolution",
         "_reflns.d_resolution_high",
     ):
-        with contextlib.suppress(Exception):
-            resolution = float(block.find([res_key])[0].str(0))
-            break
+        table = block.find([res_key])
+        if len(table) > 0:
+            try:
+                resolution = float(table[0].str(0))
+                break
+            except ValueError:
+                pass
     return resolution
 
 
@@ -191,11 +203,12 @@ def get_method(block: gemmi.cif.Block) -> str:
         The method.
 
     """
+    # Performance optimization: explicit bound checking
     method = ""
     method_key = "_exptl.method"
-    with contextlib.suppress(Exception):
-        methods = block.find([method_key])
-        method = ",".join([m.str(0).lower() for m in methods])
+    methods_table = block.find([method_key])
+    if len(methods_table) > 0:
+        method = ",".join([m.str(0).lower() for m in methods_table])
 
     return method
 
@@ -215,6 +228,7 @@ def get_experiment_conditions(
     tuple[float, float]
         The temperature and pH.
     """
+    # Performance optimization: avoid costly exception handling for loop lookups
     temperature = None
     ph = None
 
@@ -223,15 +237,23 @@ def get_experiment_conditions(
         "_pdbx_nmr_exptl_sample_conditions.temperature",
     ]
     for key in keys_t:
-        with contextlib.suppress(Exception):
-            temperature = float(block.find([key])[0][0])
-            break
+        table = block.find([key])
+        if len(table) > 0:
+            try:
+                temperature = float(table[0][0])
+                break
+            except ValueError:
+                pass
 
     keys_ph = ["_exptl_crystal_grow.pH", "_pdbx_nmr_exptl_sample_conditions.pH"]
-    with contextlib.suppress(Exception):
-        for key in keys_ph:
-            ph = float(block.find([key])[0][0])
-            break
+    for key in keys_ph:
+        table = block.find([key])
+        if len(table) > 0:
+            try:
+                ph = float(table[0][0])
+                break
+            except ValueError:
+                pass
 
     return temperature, ph
 
