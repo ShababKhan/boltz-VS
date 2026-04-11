@@ -448,8 +448,13 @@ def get_chain_symmetries(cropped, max_n_symmetries=100):
 
     # Compute backmapping from token to all coords
     crop_to_all_atom_map = []
+
+    # ⚡ Bolt: Precompute dictionary mapping for O(1) index lookups
+    # Replaces O(N^2) list `.index()` lookups in the loop below
+    chain_asym_id_to_idx = {asym_id: idx for idx, asym_id in enumerate(chain_asym_id)}
+
     for token in cropped.tokens:
-        chain_idx = chain_asym_id.index(token["asym_id"])
+        chain_idx = chain_asym_id_to_idx[token["asym_id"]]
         start = (
             chain_atom_idx[chain_idx] - original_atom_idx[chain_idx] + token["atom_idx"]
         )
