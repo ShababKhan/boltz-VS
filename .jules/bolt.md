@@ -1,3 +1,7 @@
 ## 2024-05-18 - Optimized feature combination for HTVS mode
 **Learning:** In the `combine_feats` logic, allocating `torch.zeros()` with dimensions size `N_max` and then copying `N_p` and `N_l` fragments into it creates severe CPU / memory overhead when high-dimensional tensors (like MSA features `[B, N, L, C]`) are heavily padded. This padding operation was happening redundantly for almost all keys even when `N_p == N_max` and `N_l == N_max` (the most common case, since usually ligand `N_l` is 1 and `N_p` is `N_max`). By unconditionally running `torch.zeros`, execution time per molecule grew to ~0.3s.
 **Action:** Always condition sequence block zero-allocations and `F.pad()` logic on `if N < N_max`, falling back directly to `torch.cat([fp, fl], dim=2)` when unnecessary padding can be skipped. This speeds up HTVS processing significantly (by ~80%).
+
+## 2024-05-18 - Pre-compile regex in high-frequency loops
+**Learning:** In the MMCIF and PDB writers (`src/boltz/data/write/`), `re.sub(r"\d", "", atom_name)` was being called inside the innermost loop over all atoms. This meant the regular expression was being parsed and compiled repeatedly for potentially thousands or millions of iterations, creating a significant performance bottleneck.
+**Action:** Always pre-compile regular expression patterns at the module level (e.g., `RE_DIGIT = re.compile(r'\d')`) instead of calling `re.sub` directly inside high-frequency loops (like atom iteration).
