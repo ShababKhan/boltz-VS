@@ -1,0 +1,20 @@
+--- src/boltz/data/write/pdb.py
++++ src/boltz/data/write/pdb.py
+@@ -6,6 +6,8 @@
+ from boltz.data import const
+ from boltz.data.types import Structure
+
++RE_DIGIT = re.compile(r"\d")
++
+ def to_pdb(
+     structure: Structure,
+     plddts: Optional[Tensor] = None,
+@@ -71,7 +73,7 @@
+                 name = str(atom["name"])
+                 if boltz2:
+                     atom_name = str(atom["name"])
+-                    atom_key = re.sub(r"\d", "", atom_name)
++                    atom_key = RE_DIGIT.sub("", atom_name)
+                     if atom_key in const.ambiguous_atoms:
+                         if isinstance(const.ambiguous_atoms[atom_key], str):
+                             element = const.ambiguous_atoms[atom_key]
