@@ -448,8 +448,12 @@ def get_chain_symmetries(cropped, max_n_symmetries=100):
 
     # Compute backmapping from token to all coords
     crop_to_all_atom_map = []
+
+    # Precompute dictionary map for O(1) chain asym id lookups
+    chain_asym_id_map = {asym_id: i for i, asym_id in enumerate(chain_asym_id)}
+
     for token in cropped.tokens:
-        chain_idx = chain_asym_id.index(token["asym_id"])
+        chain_idx = chain_asym_id_map[token["asym_id"]]
         start = (
             chain_atom_idx[chain_idx] - original_atom_idx[chain_idx] + token["atom_idx"]
         )
@@ -557,9 +561,12 @@ def get_ligand_symmetries(cropped, symmetries):
             swaps = []
             syms_ccd, mol_atom_names_ccd = symmetries[mol_name]
             # Get indices of mol_atom_names_ccd that are in mol_atom_names
+            # Precompute O(1) map for mol_atom_names_ccd index lookups
+            ccd_idx_map = {name: i for i, name in enumerate(mol_atom_names_ccd)}
             ccd_to_valid_ids = {
-                mol_atom_names_ccd.index(name): i
+                ccd_idx_map[name]: i
                 for i, name in enumerate(mol_atom_names)
+                if name in ccd_idx_map
             }
             ccd_valid_ids = set(ccd_to_valid_ids.keys())
 
