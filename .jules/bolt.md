@@ -1,3 +1,7 @@
 ## 2024-05-18 - Optimized feature combination for HTVS mode
 **Learning:** In the `combine_feats` logic, allocating `torch.zeros()` with dimensions size `N_max` and then copying `N_p` and `N_l` fragments into it creates severe CPU / memory overhead when high-dimensional tensors (like MSA features `[B, N, L, C]`) are heavily padded. This padding operation was happening redundantly for almost all keys even when `N_p == N_max` and `N_l == N_max` (the most common case, since usually ligand `N_l` is 1 and `N_p` is `N_max`). By unconditionally running `torch.zeros`, execution time per molecule grew to ~0.3s.
 **Action:** Always condition sequence block zero-allocations and `F.pad()` logic on `if N < N_max`, falling back directly to `torch.cat([fp, fl], dim=2)` when unnecessary padding can be skipped. This speeds up HTVS processing significantly (by ~80%).
+
+## 2025-02-28 - O(N^2) MSA Deduplication Bottleneck
+**Learning:** List comprehensions that check for existence in a growing list (`[x for x in seqs if x not in seqs_unique]`) and subsequent list `.index()` lookups inside loops create severe O(N²) bottlenecks when processing large biological sequence datasets (like MSAs from MMseqs2).
+**Action:** Always use `list(dict.fromkeys(seqs))` for insertion-ordered O(N) deduplication, and precompute an index mapping dictionary `{seq: i for i, seq in enumerate(seqs_unique)}` for O(1) index lookups when generating MSA sequence IDs.
