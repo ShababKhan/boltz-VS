@@ -13,12 +13,14 @@ from torch import Tensor
 from boltz.data import const
 from boltz.data.types import Structure
 
+RE_DIGIT = re.compile(r"\d")
+
 
 def to_mmcif(
     structure: Structure,
     plddts: Optional[Tensor] = None,
     boltz2: bool = False,
-) -> str:  # noqa: C901, PLR0915, PLR0912
+) -> str:
     """Write a structure into an MMCIF file.
 
     Parameters
@@ -166,7 +168,7 @@ def to_mmcif(
 
                         if boltz2:
                             atom_name = str(atom["name"])
-                            atom_key = re.sub(r"\d", "", atom_name)
+                            atom_key = RE_DIGIT.sub("", atom_name)
                             if atom_key in const.ambiguous_atoms:
                                 if isinstance(const.ambiguous_atoms[atom_key], str):
                                     element = const.ambiguous_atoms[atom_key]
