@@ -1,3 +1,6 @@
 ## 2024-05-18 - Optimized feature combination for HTVS mode
 **Learning:** In the `combine_feats` logic, allocating `torch.zeros()` with dimensions size `N_max` and then copying `N_p` and `N_l` fragments into it creates severe CPU / memory overhead when high-dimensional tensors (like MSA features `[B, N, L, C]`) are heavily padded. This padding operation was happening redundantly for almost all keys even when `N_p == N_max` and `N_l == N_max` (the most common case, since usually ligand `N_l` is 1 and `N_p` is `N_max`). By unconditionally running `torch.zeros`, execution time per molecule grew to ~0.3s.
 **Action:** Always condition sequence block zero-allocations and `F.pad()` logic on `if N < N_max`, falling back directly to `torch.cat([fp, fl], dim=2)` when unnecessary padding can be skipped. This speeds up HTVS processing significantly (by ~80%).
+## 2024-04-24 - Module Level Constant Ordering Causes Linting Errors
+**Learning:** When injecting performance optimizations like pre-compiled module-level regular expressions (`RE_DIGIT = re.compile(r"\d")`), putting them before standard `from ... import ...` lines will trigger `E402 Module level import not at top of file` in standard Python linting (like Ruff).
+**Action:** Always ensure injected module-level constants are placed strictly *after* the entire block of `import` and `from ... import ...` statements.
