@@ -186,10 +186,11 @@ def run_mmseqs2(  # noqa: PLR0912, D103, C901, PLR0915
     N, REDO = 101, True
 
     # deduplicate and keep track of order
-    seqs_unique = []
-    # TODO this might be slow for large sets
-    [seqs_unique.append(x) for x in seqs if x not in seqs_unique]
-    Ms = [N + seqs_unique.index(seq) for seq in seqs]
+    # ⚡ Bolt: Removed O(n^2) deduplication list membership and .index() search
+    # Replaced with O(n) dict iteration and dictionary index tracking
+    seqs_unique = list(dict.fromkeys(seqs))
+    seq_to_idx = {seq: i for i, seq in enumerate(seqs_unique)}
+    Ms = [N + seq_to_idx[seq] for seq in seqs]
     # lets do it!
     if not os.path.isfile(tar_gz_file):
         TIME_ESTIMATE = 150 * len(seqs_unique)
