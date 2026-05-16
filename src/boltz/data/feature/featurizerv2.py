@@ -421,8 +421,9 @@ def construct_paired_msa(  # noqa: C901, PLR0915, PLR0912
     # Map (chain_id, seq_idx, res_idx) to deletion
     deletions = numba.typed.Dict.empty(
         key_type=numba.types.Tuple(
-            [numba.types.int64, numba.types.int64, numba.types.int64]),
-        value_type=numba.types.int64
+            [numba.types.int64, numba.types.int64, numba.types.int64]
+        ),
+        value_type=numba.types.int64,
     )
     for chain_id, chain_msa in msa.items():
         chain_deletions = chain_msa.deletions
@@ -1289,9 +1290,9 @@ def process_atom_features(
                 res_name in const.ref_atoms
             ):
                 idx_frame_a, idx_frame_b, idx_frame_c = (
-                    const.ref_atoms[res_name].index("N"),
-                    const.ref_atoms[res_name].index("CA"),
-                    const.ref_atoms[res_name].index("C"),
+                    const.res_to_frame_atom_ids[res_name]["N"],
+                    const.res_to_frame_atom_ids[res_name]["CA"],
+                    const.res_to_frame_atom_ids[res_name]["C"],
                 )
                 mask_frame = (
                     token_atoms["is_present"][idx_frame_a]
@@ -1303,9 +1304,9 @@ def process_atom_features(
                 or token["mol_type"] == const.chain_type_ids["RNA"]
             ) and (res_name in const.ref_atoms):
                 idx_frame_a, idx_frame_b, idx_frame_c = (
-                    const.ref_atoms[res_name].index("C1'"),
-                    const.ref_atoms[res_name].index("C3'"),
-                    const.ref_atoms[res_name].index("C4'"),
+                    const.res_to_frame_atom_ids[res_name]["C1'"],
+                    const.res_to_frame_atom_ids[res_name]["C3'"],
+                    const.res_to_frame_atom_ids[res_name]["C4'"],
                 )
                 mask_frame = (
                     token_atoms["is_present"][idx_frame_a]
@@ -2330,8 +2331,12 @@ class Boltz2Featurizer:
             chain_constraint_features = process_chain_feature_constraints(data)
             contact_constraint_features = process_contact_feature_constraints(
                 data=data,
-                inference_pocket_constraints=inference_pocket_constraints if inference_pocket_constraints else [],
-                inference_contact_constraints=inference_contact_constraints if inference_contact_constraints else [],
+                inference_pocket_constraints=inference_pocket_constraints
+                if inference_pocket_constraints
+                else [],
+                inference_contact_constraints=inference_contact_constraints
+                if inference_contact_constraints
+                else [],
             )
 
         return {

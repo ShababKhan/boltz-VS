@@ -307,8 +307,9 @@ def construct_paired_msa(  # noqa: C901, PLR0915, PLR0912
     # Map (chain_id, seq_idx, res_idx) to deletion
     deletions = numba.typed.Dict.empty(
         key_type=numba.types.Tuple(
-            [numba.types.int64, numba.types.int64, numba.types.int64]),
-        value_type=numba.types.int64
+            [numba.types.int64, numba.types.int64, numba.types.int64]
+        ),
+        value_type=numba.types.int64,
     )
     for chain_id, chain_msa in msa.items():
         chain_deletions = chain_msa.deletions
@@ -743,9 +744,9 @@ def process_atom_features(
             res_type in const.ref_atoms
         ):
             idx_frame_a, idx_frame_b, idx_frame_c = (
-                const.ref_atoms[res_type].index("N"),
-                const.ref_atoms[res_type].index("CA"),
-                const.ref_atoms[res_type].index("C"),
+                const.res_to_frame_atom_ids[res_type]["N"],
+                const.res_to_frame_atom_ids[res_type]["CA"],
+                const.res_to_frame_atom_ids[res_type]["C"],
             )
             mask_frame = (
                 token_atoms["is_present"][idx_frame_a]
@@ -757,9 +758,9 @@ def process_atom_features(
             or token["mol_type"] == const.chain_type_ids["RNA"]
         ) and (res_type in const.ref_atoms):
             idx_frame_a, idx_frame_b, idx_frame_c = (
-                const.ref_atoms[res_type].index("C1'"),
-                const.ref_atoms[res_type].index("C3'"),
-                const.ref_atoms[res_type].index("C4'"),
+                const.res_to_frame_atom_ids[res_type]["C1'"],
+                const.res_to_frame_atom_ids[res_type]["C3'"],
+                const.res_to_frame_atom_ids[res_type]["C4'"],
             )
             mask_frame = (
                 token_atoms["is_present"][idx_frame_a]

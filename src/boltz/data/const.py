@@ -376,6 +376,15 @@ res_to_disto_atom_id = {
     for res, atom in res_to_disto_atom.items()
 }
 
+res_to_frame_atom_ids = {
+    res: {
+        atom: atoms.index(atom)
+        for atom in ["N", "CA", "C", "C1'", "C3'", "C4'"]
+        if atom in atoms
+    }
+    for res, atoms in ref_atoms.items()
+}
+
 # fmt: on
 
 ####################################################################################################
