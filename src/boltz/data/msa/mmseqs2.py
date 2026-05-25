@@ -5,7 +5,7 @@ import os
 import random
 import tarfile
 import time
-from typing import Optional, Union, Dict
+from typing import Dict, Optional, Union
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -55,7 +55,7 @@ def run_mmseqs2(  # noqa: PLR0912, D103, C901, PLR0915
         logger.debug("MMSeqs2 server authentication: using header-based authentication")
     else:
         logger.debug("MMSeqs2 server authentication: no credentials provided")
-    
+
     logger.debug(f"Connecting to MMSeqs2 server at: {host_url}")
     logger.debug(f"Using endpoint: {submission_endpoint}")
     logger.debug(f"Pairing strategy: {pairing_strategy}")
@@ -185,11 +185,10 @@ def run_mmseqs2(  # noqa: PLR0912, D103, C901, PLR0915
     tar_gz_file = f"{path}/out.tar.gz"
     N, REDO = 101, True
 
-    # deduplicate and keep track of order
-    seqs_unique = []
-    # TODO this might be slow for large sets
-    [seqs_unique.append(x) for x in seqs if x not in seqs_unique]
-    Ms = [N + seqs_unique.index(seq) for seq in seqs]
+    # deduplicate and keep track of order in O(N) time
+    seqs_unique = list(dict.fromkeys(seqs))
+    seq_to_index = {seq: i for i, seq in enumerate(seqs_unique)}
+    Ms = [N + seq_to_index[seq] for seq in seqs]
     # lets do it!
     if not os.path.isfile(tar_gz_file):
         TIME_ESTIMATE = 150 * len(seqs_unique)
@@ -270,7 +269,7 @@ def run_mmseqs2(  # noqa: PLR0912, D103, C901, PLR0915
     a3m_lines = {}
     for a3m_file in a3m_files:
         update_M, M = True, None
-        for line in open(a3m_file, "r"):
+        for line in open(a3m_file):
             if len(line) > 0:
                 if "\x00" in line:
                     line = line.replace("\x00", "")
