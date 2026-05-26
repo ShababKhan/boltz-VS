@@ -1182,3 +1182,19 @@ ambiguous_atoms = {
     "BRBJ": "BR",
     "UNK": "*",
 }
+
+
+res_to_frame_atom_ids = {}
+for res, atoms in ref_atoms.items():
+    if "N" in atoms and "CA" in atoms and "C" in atoms:
+        res_to_frame_atom_ids[res] = (
+            atoms.index("N"),
+            atoms.index("CA"),
+            atoms.index("C"),
+        )
+    elif "C1'" in atoms and "C3'" in atoms and "C4'" in atoms:
+        res_to_frame_atom_ids[res] = (
+            atoms.index("C1'"),
+            atoms.index("C3'"),
+            atoms.index("C4'"),
+        )
