@@ -262,28 +262,30 @@ def download_boltz2(cache: Path) -> None:
 def get_ligands_from_library(path: str) -> list[str]:
     """Extract smiles from a ligand library."""
     from rdkit import Chem
+
     ligands = []
     p = Path(path)
     if not p.exists():
         return ligands
-    if p.suffix.lower() == '.csv':
-        with open(p, 'r') as f:
+    if p.suffix.lower() == ".csv":
+        with open(p, "r") as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if 'smiles' in row:
-                    ligands.append(row['smiles'])
-                elif 'SMILES' in row:
-                    ligands.append(row['SMILES'])
-    elif p.suffix.lower() in ['.smi', '.smiles']:
-        with open(p, 'r') as f:
+                if "smiles" in row:
+                    ligands.append(row["smiles"])
+                elif "SMILES" in row:
+                    ligands.append(row["SMILES"])
+    elif p.suffix.lower() in [".smi", ".smiles"]:
+        with open(p, "r") as f:
             for line in f:
                 ligands.append(line.split()[0])
-    elif p.suffix.lower() == '.sdf':
+    elif p.suffix.lower() == ".sdf":
         suppl = Chem.SDMolSupplier(str(p))
         for mol in suppl:
             if mol is not None:
                 ligands.append(Chem.MolToSmiles(mol))
     return ligands
+
 
 def get_cache_path() -> str:
     """Determine the cache path, prioritising the BOLTZ_CACHE environment variable.
@@ -477,22 +479,19 @@ def compute_msa(
     click.echo(f"Calling MSA server for target {target_id} with {len(data)} sequences")
     click.echo(f"MSA server URL: {msa_server_url}")
     click.echo(f"MSA pairing strategy: {msa_pairing_strategy}")
-    
+
     # Construct auth headers if API key header/value is provided
     auth_headers = None
     if api_key_value:
         key = api_key_header if api_key_header else "X-API-Key"
         value = api_key_value
-        auth_headers = {
-            "Content-Type": "application/json",
-            key: value
-        }
+        auth_headers = {"Content-Type": "application/json", key: value}
         click.echo(f"Using API key authentication for MSA server (header: {key})")
     elif msa_server_username and msa_server_password:
         click.echo("Using basic authentication for MSA server")
     else:
         click.echo("No authentication provided for MSA server")
-    
+
     if len(data) > 1:
         paired_msas = run_mmseqs2(
             list(data.values()),
@@ -741,7 +740,7 @@ def process_inputs(
     # Validate mutually exclusive authentication methods
     has_basic_auth = msa_server_username and msa_server_password
     has_api_key = api_key_value is not None
-    
+
     if has_basic_auth and has_api_key:
         raise ValueError(
             "Cannot use both basic authentication (--msa_server_username/--msa_server_password) "
@@ -1153,7 +1152,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             msa_server_password = os.environ.get("BOLTZ_MSA_PASSWORD")
         if api_key_value is None:
             api_key_value = os.environ.get("MSA_API_KEY_VALUE")
-        
+
         click.echo(f"MSA server enabled: {msa_server_url}")
         if api_key_value:
             click.echo("MSA server authentication: using API key header")
@@ -1237,9 +1236,15 @@ def predict(  # noqa: C901, PLR0915, PLR0912
             msa_dir=processed_dir / "msa",
             mol_dir=mol_dir,
             num_workers=num_workers,
-            constraints_dir=(processed_dir / "constraints") if (processed_dir / "constraints").exists() else None,
-            template_dir=(processed_dir / "templates") if (processed_dir / "templates").exists() else None,
-            extra_mols_dir=(processed_dir / "mols") if (processed_dir / "mols").exists() else None,
+            constraints_dir=(processed_dir / "constraints")
+            if (processed_dir / "constraints").exists()
+            else None,
+            template_dir=(processed_dir / "templates")
+            if (processed_dir / "templates").exists()
+            else None,
+            extra_mols_dir=(processed_dir / "mols")
+            if (processed_dir / "mols").exists()
+            else None,
             override_method=method,
         )
 
@@ -1251,6 +1256,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         # Get protein features
         feats_prot = dataset[0]
         from boltz.data.module.inferencev2 import collate
+
         feats_prot = collate([feats_prot])
 
         # Load model
@@ -1370,6 +1376,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         # A dummy mock trainer to pass to the writer
         class MockTrainer:
             pass
+
         mock_trainer = MockTrainer()
 
         for idx, lig_smiles in enumerate(tqdm(ligands)):
@@ -1378,7 +1385,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
 
             lig_yaml = {
                 "version": 1,
-                "sequences": [{"ligand": {"id": "L", "smiles": lig_smiles}}]
+                "sequences": [{"ligand": {"id": "L", "smiles": lig_smiles}}],
             }
             if has_affinity:
                 lig_yaml["properties"] = [{"affinity": {"binder": "L"}}]
@@ -1421,34 +1428,55 @@ def predict(  # noqa: C901, PLR0915, PLR0912
                 feats_complex = combine_feats(feats_prot, feats_lig)
 
                 # Move to device
-                feats_complex = data_module.transfer_batch_to_device(feats_complex, device, 0)
+                feats_complex = data_module.transfer_batch_to_device(
+                    feats_complex, device, 0
+                )
 
                 # Inference
                 with torch.no_grad():
                     pred = model_module.predict_step(feats_complex, 0)
-                pred_writer.write_on_batch_end(mock_trainer, model_module, pred, None, feats_complex, 0, 0)
+                pred_writer.write_on_batch_end(
+                    mock_trainer, model_module, pred, None, feats_complex, 0, 0
+                )
 
                 if has_affinity:
                     # Need to process features again for affinity, crop it maybe?
                     # The simple way is to pass the affinity module through Boltz2InferenceDataModule
                     lig_data_module_aff = Boltz2InferenceDataModule(
                         manifest=lig_manifest,
-                        target_dir=out_dir / "predictions", # target_dir is where the pre_affinity struct is saved!
+                        target_dir=out_dir
+                        / "predictions",  # target_dir is where the pre_affinity struct is saved!
                         msa_dir=tmp_dir / "processed" / "msa",
                         mol_dir=mol_dir,
                         num_workers=0,
                         affinity=True,
-                        override_method="other"
+                        override_method="other",
                     )
 
                     try:
-                        feats_lig_aff = collate([lig_data_module_aff.predict_dataloader().dataset[0]])
+                        feats_lig_aff = collate(
+                            [lig_data_module_aff.predict_dataloader().dataset[0]]
+                        )
                         feats_complex_aff = combine_feats(feats_prot, feats_lig_aff)
-                        feats_complex_aff = lig_data_module_aff.transfer_batch_to_device(feats_complex_aff, device, 0)
+                        feats_complex_aff = (
+                            lig_data_module_aff.transfer_batch_to_device(
+                                feats_complex_aff, device, 0
+                            )
+                        )
 
                         with torch.no_grad():
-                            pred_aff = affinity_model_module.predict_step(feats_complex_aff, 0)
-                        affinity_pred_writer.write_on_batch_end(mock_trainer, affinity_model_module, pred_aff, None, feats_complex_aff, 0, 0)
+                            pred_aff = affinity_model_module.predict_step(
+                                feats_complex_aff, 0
+                            )
+                        affinity_pred_writer.write_on_batch_end(
+                            mock_trainer,
+                            affinity_model_module,
+                            pred_aff,
+                            None,
+                            feats_complex_aff,
+                            0,
+                            0,
+                        )
                     except Exception as e:
                         click.echo(f"Affinity inference failed for {lig_id}: {e}")
 
@@ -1513,7 +1541,11 @@ def predict(  # noqa: C901, PLR0915, PLR0912
     if (isinstance(devices, int) and devices > 1) or (
         isinstance(devices, list) and len(devices) > 1
     ):
-        start_method = "fork" if platform.system() != "win32" and platform.system() != "Windows" else "spawn"
+        start_method = (
+            "fork"
+            if platform.system() != "win32" and platform.system() != "Windows"
+            else "spawn"
+        )
         strategy = DDPStrategy(start_method=start_method)
         if len(filtered_manifest.records) < devices:
             msg = (
@@ -1688,7 +1720,7 @@ def predict(  # noqa: C901, PLR0915, PLR0912
         steering_args.fk_steering = False
         steering_args.physical_guidance_update = False
         steering_args.contact_guidance_update = False
-        
+
         model_module = Boltz2.load_from_checkpoint(
             affinity_checkpoint,
             strict=True,

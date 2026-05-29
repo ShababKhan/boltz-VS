@@ -245,16 +245,13 @@ class BoltzWriter(BasePredictionWriter):
                         / f"pde_{record.id}_model_{idx_to_rank[model_idx]}.npz"
                     )
                     np.savez_compressed(path, pde=pde.cpu().numpy())
-                
+
             # Save embeddings
             if self.write_embeddings and "s" in prediction and "z" in prediction:
                 s = prediction["s"].cpu().numpy()
                 z = prediction["z"].cpu().numpy()
 
-                path = (
-                    struct_dir
-                    / f"embeddings_{record.id}.npz"
-                )
+                path = struct_dir / f"embeddings_{record.id}.npz"
                 np.savez_compressed(path, s=s, z=z)
 
     def on_predict_epoch_end(
