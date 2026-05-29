@@ -136,8 +136,7 @@ class Potential(ABC):
             compute_gradient=True,
         )
         energy, dEnergy = self.compute_function(
-            value, 
-            *args, negation_mask=negation_mask, compute_derivative=True
+            value, *args, negation_mask=negation_mask, compute_derivative=True
         )
         if union_index is not None:
             neg_exp_energy = torch.exp(-1 * parameters["union_lambda"] * energy)
@@ -414,8 +413,12 @@ class PoseBustersPotential(FlatBottomPotential, DistancePotential):
             feats["ref_element"].float() @ vdw_radii.unsqueeze(-1)
         ).squeeze(-1)[0]
         bond_cutoffs = 0.35 + atom_vdw_radii[pair_index].mean(dim=0)
-        lower_bounds[~bond_mask] = torch.max(lower_bounds[~bond_mask], bond_cutoffs[~bond_mask])
-        upper_bounds[bond_mask] = torch.min(upper_bounds[bond_mask], bond_cutoffs[bond_mask])
+        lower_bounds[~bond_mask] = torch.max(
+            lower_bounds[~bond_mask], bond_cutoffs[~bond_mask]
+        )
+        upper_bounds[bond_mask] = torch.min(
+            upper_bounds[bond_mask], bond_cutoffs[bond_mask]
+        )
 
         k = torch.ones_like(lower_bounds)
 

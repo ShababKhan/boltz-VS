@@ -20,6 +20,7 @@ def kernel_triangular_mult(
     eps,
 ):
     from cuequivariance_torch.primitives.triangle import triangle_multiplicative_update
+
     return triangle_multiplicative_update(
         x,
         direction=direction,
@@ -106,6 +107,7 @@ class TriangleMultiplicationOutgoing(nn.Module):
                 )
             except ImportError:
                 import warnings
+
                 warnings.warn(
                     "kernel_triangular_mult import failed. Falling back to use_kernels=False. "
                     "Consider setting --no_kernels to suppress this warning."
@@ -202,6 +204,7 @@ class TriangleMultiplicationIncoming(nn.Module):
                 )
             except ImportError:
                 import warnings
+
                 warnings.warn(
                     "kernel_triangular_mult import failed. Falling back to use_kernels=False. "
                     "Consider setting --no_kernels to suppress this warning."

@@ -614,7 +614,9 @@ class AtomDiffusion(Module):
                 multiplicity, 0
             )
 
-            align_weights = denoised_atom_coords.new_ones(denoised_atom_coords.shape[:2])
+            align_weights = denoised_atom_coords.new_ones(
+                denoised_atom_coords.shape[:2]
+            )
             atom_type = (
                 torch.bmm(
                     feats["atom_to_token"].float(),
