@@ -341,7 +341,7 @@ def compute_geometry_constraints(mol: Mol, idx_map):
 
 def compute_chiral_atom_constraints(mol, idx_map):
     constraints = []
-    if all([atom.HasProp("_CIPRank") for atom in mol.GetAtoms()]):
+    if all(atom.HasProp("_CIPRank") for atom in mol.GetAtoms()):
         for center_idx, orientation in Chem.FindMolChiralCenters(
             mol, includeUnassigned=False
         ):
@@ -389,7 +389,7 @@ def compute_chiral_atom_constraints(mol, idx_map):
 
 def compute_stereo_bond_constraints(mol, idx_map):
     constraints = []
-    if all([atom.HasProp("_CIPRank") for atom in mol.GetAtoms()]):
+    if all(atom.HasProp("_CIPRank") for atom in mol.GetAtoms()):
         for bond in mol.GetBonds():
             stereo = bond.GetStereo()
             if stereo in {BondStereo.STEREOE, BondStereo.STEREOZ}:
@@ -1203,12 +1203,16 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
 
                     # Add error and warning messaging when computing affinity with ligands too large
                     if ref_mol.GetNumAtoms() > 128:
-                        msg = f"The ligand for affinity is too large, ligands with more than 128 atoms are not " \
-                              f"supported in the affinity prediction module"
+                        msg = (
+                            f"The ligand for affinity is too large, ligands with more than 128 atoms are not "
+                            f"supported in the affinity prediction module"
+                        )
                         raise ValueError(msg)
                     elif ref_mol.GetNumAtoms() > 56:
-                        print("WARNING: the ligand used for affinity calculation is larger than 56 heavy-atoms, which "
-                              "was the maximum during training, therefore the affinity output might be inaccurate.")
+                        print(
+                            "WARNING: the ligand used for affinity calculation is larger than 56 heavy-atoms, which "
+                            "was the maximum during training, therefore the affinity output might be inaccurate."
+                        )
 
                 # Parse residue
                 residue = parse_ccd_residue(
@@ -1268,8 +1272,10 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
                     msg = f"The ligand for affinity is too large, ligands with more than 128 atoms are not supported in the affinity prediction module"
                     raise ValueError(msg)
                 elif mol_no_h.GetNumAtoms() > 56:
-                    print("WARNING: the ligand used for affinity calculation is larger than 56 heavy-atoms, "
-                          "which was the maximum during training, therefore the affinity output might be inaccurate.")
+                    print(
+                        "WARNING: the ligand used for affinity calculation is larger than 56 heavy-atoms, "
+                        "which was the maximum during training, therefore the affinity output might be inaccurate."
+                    )
 
             affinity_mw = AllChem.Descriptors.MolWt(mol_no_h) if affinity else None
             extra_mols[f"LIG{ligand_id}"] = mol_no_h
@@ -1630,20 +1636,16 @@ def parse_boltz_schema(  # noqa: C901, PLR0915, PLR0912
         if template_chain_ids is not None and not isinstance(template_chain_ids, list):
             template_chain_ids = [template_chain_ids]
 
-        if (
-            template_chain_ids is not None
-            and chain_ids is not None
-        ):
-           
-                if len(template_chain_ids) == len(chain_ids):
-                     if len(template_chain_ids) > 0 and len(chain_ids) > 0:
-                        matched = True
-                else:
-                    msg = (
-                        "When providing both the chain_id and template_id, the number of"
-                        "template_ids provided must match the number of chain_ids!"
-                    )
-                    raise ValueError(msg)
+        if template_chain_ids is not None and chain_ids is not None:
+            if len(template_chain_ids) == len(chain_ids):
+                if len(template_chain_ids) > 0 and len(chain_ids) > 0:
+                    matched = True
+            else:
+                msg = (
+                    "When providing both the chain_id and template_id, the number of"
+                    "template_ids provided must match the number of chain_ids!"
+                )
+                raise ValueError(msg)
 
         # Get relevant chains ids
         if chain_ids is None:
