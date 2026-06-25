@@ -490,7 +490,9 @@ def compute_geometry_constraints(mol: Mol, idx_map):
 
 def compute_chiral_atom_constraints(mol, idx_map):
     constraints = []
-    if all([atom.HasProp("_CIPRank") for atom in mol.GetAtoms()]):
+    # ⚡ Bolt Optimization: Use generator expression instead of list comprehension
+    # inside all() to enable short-circuiting and avoid O(N) memory allocation.
+    if all(atom.HasProp("_CIPRank") for atom in mol.GetAtoms()):
         for center_idx, orientation in Chem.FindMolChiralCenters(
             mol, includeUnassigned=False
         ):
@@ -538,7 +540,9 @@ def compute_chiral_atom_constraints(mol, idx_map):
 
 def compute_stereo_bond_constraints(mol, idx_map):
     constraints = []
-    if all([atom.HasProp("_CIPRank") for atom in mol.GetAtoms()]):
+    # ⚡ Bolt Optimization: Use generator expression instead of list comprehension
+    # inside all() to enable short-circuiting and avoid O(N) memory allocation.
+    if all(atom.HasProp("_CIPRank") for atom in mol.GetAtoms()):
         for bond in mol.GetBonds():
             stereo = bond.GetStereo()
             if stereo in {BondStereo.STEREOE, BondStereo.STEREOZ}:
