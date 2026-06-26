@@ -5,7 +5,7 @@ import os
 import random
 import tarfile
 import time
-from typing import Optional, Union, Dict
+from typing import Dict, Optional, Union
 
 import requests
 from requests.auth import HTTPBasicAuth
@@ -276,7 +276,7 @@ def run_mmseqs2(  # noqa: PLR0912, D103, C901, PLR0915
     a3m_lines = {}
     for a3m_file in a3m_files:
         update_M, M = True, None
-        for line in open(a3m_file, "r"):
+        for line in open(a3m_file):
             if len(line) > 0:
                 if "\x00" in line:
                     line = line.replace("\x00", "")
