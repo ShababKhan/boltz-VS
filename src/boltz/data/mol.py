@@ -1,3 +1,4 @@
+import concurrent.futures
 import itertools
 import pickle
 import random
@@ -28,14 +29,25 @@ def load_molecules(moldir: str, molecules: list[str]) -> dict[str, Mol]:
     dict[str, Mol]
         The loaded molecules.
     """
-    loaded_mols = {}
-    for molecule in molecules:
+    def _load_single(molecule: str) -> tuple[str, Mol]:
         path = Path(moldir) / f"{molecule}.pkl"
-        if not path.exists():
+        try:
+            with path.open("rb") as f:
+                mol = pickle.load(f)  # noqa: S301
+                return molecule, mol
+        # BOLT OPTIMIZATION: Use EAFP to avoid N+1 problem from path.exists() system calls
+        except FileNotFoundError:
             msg = f"CCD component {molecule} not found!"
-            raise ValueError(msg)
-        with path.open("rb") as f:
-            loaded_mols[molecule] = pickle.load(f)  # noqa: S301
+            raise ValueError(msg) from None
+
+    loaded_mols = {}
+    # BOLT OPTIMIZATION: Parallelize molecule I/O loading
+    # Expected impact: Significantly reduces latency when loading a large number of components.
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = {executor.submit(_load_single, mol): mol for mol in molecules}
+        for future in concurrent.futures.as_completed(futures):
+            mol_name, mol = future.result()
+            loaded_mols[mol_name] = mol
     return loaded_mols
 
 
@@ -72,12 +84,26 @@ def load_all_molecules(moldir: str) -> dict[str, Mol]:
         The loaded molecules.
 
     """
-    loaded_mols = {}
-    files = list(Path(moldir).glob("*.pkl"))
-    for path in tqdm(files, total=len(files), desc="Loading molecules", leave=False):
+    def _load_single(path: Path) -> tuple[str, Mol]:
         mol_name = path.stem
         with path.open("rb") as f:
-            loaded_mols[mol_name] = pickle.load(f)  # noqa: S301
+            mol = pickle.load(f)  # noqa: S301
+            return mol_name, mol
+
+    loaded_mols = {}
+    files = list(Path(moldir).glob("*.pkl"))
+    # BOLT OPTIMIZATION: Parallelize parsing of all components
+    # Expected impact: Dramatically speeds up the initialization phase.
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = {executor.submit(_load_single, path): path for path in files}
+        for future in tqdm(
+            concurrent.futures.as_completed(futures),
+            total=len(files),
+            desc="Loading molecules",
+            leave=False,
+        ):
+            mol_name, mol = future.result()
+            loaded_mols[mol_name] = mol
     return loaded_mols
 
 
@@ -103,13 +129,13 @@ def get_symmetries(mols: dict[str, Mol]) -> dict:  # noqa: PLR0912
             if mol.HasProp("pb_edge_index"):
                 edge_index = pickle.loads(
                     bytes.fromhex(mol.GetProp("pb_edge_index"))
-                ).astype(np.int64)  # noqa: S301
+                ).astype(np.int64)
                 lower_bounds = pickle.loads(
                     bytes.fromhex(mol.GetProp("pb_lower_bounds"))
-                )  # noqa: S301
+                )
                 upper_bounds = pickle.loads(
                     bytes.fromhex(mol.GetProp("pb_upper_bounds"))
-                )  # noqa: S301
+                )
                 bond_mask = pickle.loads(bytes.fromhex(mol.GetProp("pb_bond_mask")))  # noqa: S301
                 angle_mask = pickle.loads(bytes.fromhex(mol.GetProp("pb_angle_mask")))  # noqa: S301
             else:
@@ -187,7 +213,7 @@ def get_symmetries(mols: dict[str, Mol]) -> dict:  # noqa: PLR0912
                 aromatic_6_ring_index,
                 planar_double_bond_index,
             )
-        except Exception as e:  # noqa: BLE001, PERF203, S110
+        except Exception:  # noqa: BLE001, PERF203, S110
             pass
 
     return symmetries
@@ -197,9 +223,9 @@ def compute_symmetry_idx_dictionary(data):
     # Compute the symmetry index dictionary
     total_count = 0
     all_coords = []
-    for i, chain in enumerate(data.chains):
+    for _i, chain in enumerate(data.chains):
         chain.start_idx = total_count
-        for j, token in enumerate(chain.tokens):
+        for _j, token in enumerate(chain.tokens):
             token.start_idx = total_count - chain.start_idx
             all_coords.extend(
                 [[atom.coords.x, atom.coords.y, atom.coords.z] for atom in token.atoms]
@@ -255,7 +281,7 @@ def minimum_lddt_symmetry_coords(
     for c in chain_symmetries:
         true_all_coords = all_coords.clone()
         true_all_resolved_mask = all_resolved_mask.clone()
-        for start1, end1, start2, end2, chainidx1, chainidx2 in c:
+        for start1, end1, start2, end2, _chainidx1, _chainidx2 in c:
             true_all_coords[:, start1:end1] = all_coords[:, start2:end2]
             true_all_resolved_mask[start1:end1] = all_resolved_mask[start2:end2]
         true_coords = true_all_coords[:, crop_to_all_atom_map]
@@ -287,7 +313,7 @@ def minimum_lddt_symmetry_coords(
         for c in symmetric_amino_or_lig:
             for i, j in c:
                 indices.add(i)
-        indices = sorted(list(indices))
+        indices = sorted(indices)
         indices = torch.from_numpy(np.asarray(indices)).to(true_coords.device).long()
         pred_coords_subset = coords[:, : len(crop_to_all_atom_map)][:, indices]
         sub_dmat_pred = torch.cdist(
@@ -324,14 +350,14 @@ def minimum_lddt_symmetry_coords(
                 * (1 - torch.eye(len(indices))).to(sub_true_pair_lddt).bool()
             )
 
-            lddt, total = lddt_dist(
+            lddt, _total = lddt_dist(
                 sub_dmat_pred,
                 sub_dmat_true,
                 sub_true_pair_lddt,
                 cutoff=15.0,
                 per_atom=False,
             )
-            new_lddt, new_total = lddt_dist(
+            new_lddt, _new_total = lddt_dist(
                 sub_dmat_pred,
                 sub_dmat_new_true,
                 sub_new_true_pair_lddt,
@@ -380,7 +406,7 @@ def minimum_lddt_symmetry_dist(
     pred_distogram: torch.Tensor,
     feats: dict,
     index_batch: int,
-):
+) -> None:
     # Note: for now only ligand symmetries are resolved
 
     disto_target = feats["disto_target"][index_batch]
@@ -446,7 +472,6 @@ def minimum_lddt_symmetry_dist(
     # update features to be used in diffusion and in distogram loss
     feats["disto_target"][index_batch] = disto_target
     feats["coords"][index_batch] = coords
-    return
 
 
 def compute_all_coords_mask(structure):
@@ -455,9 +480,9 @@ def compute_all_coords_mask(structure):
     all_coords = []
     all_coords_crop_mask = []
     all_resolved_mask = []
-    for i, chain in enumerate(structure.chains):
+    for _i, chain in enumerate(structure.chains):
         chain.start_idx = total_count
-        for j, token in enumerate(chain.tokens):
+        for _j, token in enumerate(chain.tokens):
             token.start_idx = total_count - chain.start_idx
             all_coords.extend(
                 [[atom.coords.x, atom.coords.y, atom.coords.z] for atom in token.atoms]
@@ -569,7 +594,7 @@ def get_chain_symmetries(cropped, max_n_symmetries=100):
             swaps.append(possible_swaps)
 
         found = False
-        for symmetry_idx, symmetry in enumerate(symmetries):
+        for _symmetry_idx, symmetry in enumerate(symmetries):
             j = symmetry[0][0]
             chain2 = structure.chains[j]
             start2 = chain_atom_idx[j]
@@ -578,7 +603,7 @@ def get_chain_symmetries(cropped, max_n_symmetries=100):
                 chain["entity_id"] == chain2["entity_id"]
                 and end - start == end2 - start2
             ):
-                symmetries[symmetry_idx].append(
+                symmetry.append(
                     (i, start, end, chain_in_crop[i], chain["mol_type"])
                 )
                 found = True
@@ -699,124 +724,124 @@ def get_ligand_symmetries(cropped, symmetries, return_physical_metrics=False):
         [],
     )
     for mol_name, start_mol, mol_id, mol_atom_names in index_mols:
-        if not mol_name in symmetries:
+        if mol_name not in symmetries:
             continue
-        else:
-            swaps = []
-            (
-                syms_ccd,
-                mol_atom_names_ccd,
-                edge_index,
-                lower_bounds,
-                upper_bounds,
-                bond_mask,
-                angle_mask,
-                chiral_atom_index,
-                chiral_check_mask,
-                chiral_atom_orientations,
-                stereo_bond_index,
-                stereo_check_mask,
-                stereo_bond_orientations,
-                aromatic_5_ring_index,
-                aromatic_6_ring_index,
-                planar_double_bond_index,
-            ) = symmetries[mol_name]
-            # Get indices of mol_atom_names_ccd that are in mol_atom_names
-            ccd_to_valid_ids = {
-                mol_atom_names_ccd.index(name): i
-                for i, name in enumerate(mol_atom_names)
-            }
-            ccd_to_valid_id_array = np.array(
-                [
-                    float("nan") if i not in ccd_to_valid_ids else ccd_to_valid_ids[i]
-                    for i in range(len(mol_atom_names_ccd))
-                ]
+        swaps = []
+        (
+            syms_ccd,
+            mol_atom_names_ccd,
+            edge_index,
+            lower_bounds,
+            upper_bounds,
+            bond_mask,
+            angle_mask,
+            chiral_atom_index,
+            chiral_check_mask,
+            chiral_atom_orientations,
+            stereo_bond_index,
+            stereo_check_mask,
+            stereo_bond_orientations,
+            aromatic_5_ring_index,
+            aromatic_6_ring_index,
+            planar_double_bond_index,
+        ) = symmetries[mol_name]
+        # Get indices of mol_atom_names_ccd that are in mol_atom_names
+        ccd_to_valid_ids = {
+            mol_atom_names_ccd.index(name): i
+            for i, name in enumerate(mol_atom_names)
+        }
+        ccd_to_valid_id_array = np.array(
+            [
+                float("nan") if i not in ccd_to_valid_ids else ccd_to_valid_ids[i]
+                for i in range(len(mol_atom_names_ccd))
+            ]
+        )
+        ccd_valid_ids = set(ccd_to_valid_ids.keys())
+        syms = []
+        # Get syms
+        for sym_ccd in syms_ccd:
+            sym_dict = {}
+            bool_add = True
+            for i, j in enumerate(sym_ccd):
+                if i in ccd_valid_ids:
+                    if j in ccd_valid_ids:
+                        i_true = ccd_to_valid_ids[i]
+                        j_true = ccd_to_valid_ids[j]
+                        sym_dict[i_true] = j_true
+                    else:
+                        bool_add = False
+                        break
+            if bool_add:
+                syms.append([sym_dict[i] for i in range(len(ccd_valid_ids))])
+        for sym in syms:
+            if len(sym) != added_molecules[mol_id]:
+                msg = f"Symmetry length mismatch {len(sym)} {added_molecules[mol_id]}"
+                raise Exception(
+                    msg
+                )
+            # assert (
+            #     len(sym) == added_molecules[mol_id]
+            # ), f"Symmetry length mismatch {len(sym)} {added_molecules[mol_id]}"
+            sym_new_idx = []
+            for i, j in enumerate(sym):
+                if i != int(j):
+                    sym_new_idx.append((i + start_mol, int(j) + start_mol))
+            if len(sym_new_idx) > 0:
+                swaps.append(sym_new_idx)
+
+        if len(swaps) > 0:
+            molecule_symmetries.append(swaps)
+
+        if return_physical_metrics:
+            edge_index, (lower_bounds, upper_bounds, bond_mask, angle_mask) = (
+                slice_valid_index(
+                    edge_index,
+                    ccd_to_valid_id_array,
+                    (lower_bounds, upper_bounds, bond_mask, angle_mask),
+                )
             )
-            ccd_valid_ids = set(ccd_to_valid_ids.keys())
-            syms = []
-            # Get syms
-            for sym_ccd in syms_ccd:
-                sym_dict = {}
-                bool_add = True
-                for i, j in enumerate(sym_ccd):
-                    if i in ccd_valid_ids:
-                        if j in ccd_valid_ids:
-                            i_true = ccd_to_valid_ids[i]
-                            j_true = ccd_to_valid_ids[j]
-                            sym_dict[i_true] = j_true
-                        else:
-                            bool_add = False
-                            break
-                if bool_add:
-                    syms.append([sym_dict[i] for i in range(len(ccd_valid_ids))])
-            for sym in syms:
-                if len(sym) != added_molecules[mol_id]:
-                    raise Exception(
-                        f"Symmetry length mismatch {len(sym)} {added_molecules[mol_id]}"
-                    )
-                # assert (
-                #     len(sym) == added_molecules[mol_id]
-                # ), f"Symmetry length mismatch {len(sym)} {added_molecules[mol_id]}"
-                sym_new_idx = []
-                for i, j in enumerate(sym):
-                    if i != int(j):
-                        sym_new_idx.append((i + start_mol, int(j) + start_mol))
-                if len(sym_new_idx) > 0:
-                    swaps.append(sym_new_idx)
+            all_edge_index.append(edge_index + start_mol)
+            all_lower_bounds.append(lower_bounds)
+            all_upper_bounds.append(upper_bounds)
+            all_bond_mask.append(bond_mask)
+            all_angle_mask.append(angle_mask)
 
-            if len(swaps) > 0:
-                molecule_symmetries.append(swaps)
+            chiral_atom_index, (chiral_check_mask, chiral_atom_orientations) = (
+                slice_valid_index(
+                    chiral_atom_index,
+                    ccd_to_valid_id_array,
+                    (chiral_check_mask, chiral_atom_orientations),
+                )
+            )
+            all_chiral_atom_index.append(chiral_atom_index + start_mol)
+            all_chiral_check_mask.append(chiral_check_mask)
+            all_chiral_atom_orientations.append(chiral_atom_orientations)
 
-            if return_physical_metrics:
-                edge_index, (lower_bounds, upper_bounds, bond_mask, angle_mask) = (
-                    slice_valid_index(
-                        edge_index,
-                        ccd_to_valid_id_array,
-                        (lower_bounds, upper_bounds, bond_mask, angle_mask),
-                    )
+            stereo_bond_index, (stereo_check_mask, stereo_bond_orientations) = (
+                slice_valid_index(
+                    stereo_bond_index,
+                    ccd_to_valid_id_array,
+                    (stereo_check_mask, stereo_bond_orientations),
                 )
-                all_edge_index.append(edge_index + start_mol)
-                all_lower_bounds.append(lower_bounds)
-                all_upper_bounds.append(upper_bounds)
-                all_bond_mask.append(bond_mask)
-                all_angle_mask.append(angle_mask)
+            )
+            all_stereo_bond_index.append(stereo_bond_index + start_mol)
+            all_stereo_check_mask.append(stereo_check_mask)
+            all_stereo_bond_orientations.append(stereo_bond_orientations)
 
-                chiral_atom_index, (chiral_check_mask, chiral_atom_orientations) = (
-                    slice_valid_index(
-                        chiral_atom_index,
-                        ccd_to_valid_id_array,
-                        (chiral_check_mask, chiral_atom_orientations),
-                    )
-                )
-                all_chiral_atom_index.append(chiral_atom_index + start_mol)
-                all_chiral_check_mask.append(chiral_check_mask)
-                all_chiral_atom_orientations.append(chiral_atom_orientations)
-
-                stereo_bond_index, (stereo_check_mask, stereo_bond_orientations) = (
-                    slice_valid_index(
-                        stereo_bond_index,
-                        ccd_to_valid_id_array,
-                        (stereo_check_mask, stereo_bond_orientations),
-                    )
-                )
-                all_stereo_bond_index.append(stereo_bond_index + start_mol)
-                all_stereo_check_mask.append(stereo_check_mask)
-                all_stereo_bond_orientations.append(stereo_bond_orientations)
-
-                aromatic_5_ring_index = slice_valid_index(
-                    aromatic_5_ring_index, ccd_to_valid_id_array
-                )
-                aromatic_6_ring_index = slice_valid_index(
-                    aromatic_6_ring_index, ccd_to_valid_id_array
-                )
-                planar_double_bond_index = slice_valid_index(
-                    planar_double_bond_index, ccd_to_valid_id_array
-                )
-                all_aromatic_5_ring_index.append(aromatic_5_ring_index + start_mol)
-                all_aromatic_6_ring_index.append(aromatic_6_ring_index + start_mol)
-                all_planar_double_bond_index.append(
-                    planar_double_bond_index + start_mol
-                )
+            aromatic_5_ring_index = slice_valid_index(
+                aromatic_5_ring_index, ccd_to_valid_id_array
+            )
+            aromatic_6_ring_index = slice_valid_index(
+                aromatic_6_ring_index, ccd_to_valid_id_array
+            )
+            planar_double_bond_index = slice_valid_index(
+                planar_double_bond_index, ccd_to_valid_id_array
+            )
+            all_aromatic_5_ring_index.append(aromatic_5_ring_index + start_mol)
+            all_aromatic_6_ring_index.append(aromatic_6_ring_index + start_mol)
+            all_planar_double_bond_index.append(
+                planar_double_bond_index + start_mol
+            )
 
     if return_physical_metrics:
         if len(all_edge_index) > 0:
