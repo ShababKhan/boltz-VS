@@ -4,3 +4,7 @@
 ## 2024-05-19 - Optimized deduplication in MSA generation
 **Learning:** In `src/boltz/data/msa/mmseqs2.py`, maintaining sequence uniqueness and mapping sequence order used an $O(N^2)$ list membership check (`x not in list`) combined with `.index()` on a list comprehension. For very large sequence lists submitted for MSAs, this is exceptionally slow.
 **Action:** Replace $O(N^2)$ tracking in list comprehensions with $O(N)$ dictionary-based order-preserving deduplication (`list(dict.fromkeys(seqs))`) and $O(1)$ index lookups (`{seq: i for i, seq in enumerate(unique)}`) when maintaining uniqueness constraints over large iterables.
+
+## 2024-07-26 - Optimize O(N^2) list index lookups in loops
+**Learning:** Found multiple instances where `.index()` was used on Python lists inside heavily iterated loops (`chain_asym_id.index(...)` and `mol_atom_names_ccd.index(...)`) in data loading/processing files like `mol.py` and `symmetry.py`. Because `.index()` on a list is O(N), calling it in a loop of size M results in an O(N*M) bottleneck.
+**Action:** When iterating over a list and needing index lookups against another collection, always precompute a lookup dictionary (`{item: idx for idx, item in enumerate(collection)}`) *before* the loop. This changes the O(N) lookup to O(1), turning an O(N*M) bottleneck into an O(N+M) process.
