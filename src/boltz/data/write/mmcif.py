@@ -13,6 +13,9 @@ from torch import Tensor
 from boltz.data import const
 from boltz.data.types import Structure
 
+# Pre-compiled regex to remove digits from atom names for performance optimization
+RE_DIGIT = re.compile(r"\d")
+
 
 def to_mmcif(
     structure: Structure,
@@ -166,7 +169,7 @@ def to_mmcif(
 
                         if boltz2:
                             atom_name = str(atom["name"])
-                            atom_key = re.sub(r"\d", "", atom_name)
+                            atom_key = RE_DIGIT.sub("", atom_name)
                             if atom_key in const.ambiguous_atoms:
                                 if isinstance(const.ambiguous_atoms[atom_key], str):
                                     element = const.ambiguous_atoms[atom_key]
