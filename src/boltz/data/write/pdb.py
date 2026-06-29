@@ -7,12 +7,14 @@ from torch import Tensor
 from boltz.data import const
 from boltz.data.types import Structure
 
+RE_DIGIT = re.compile(r"\d")
+
 
 def to_pdb(
     structure: Structure,
     plddts: Optional[Tensor] = None,
     boltz2: bool = False,
-) -> str:  # noqa: PLR0915
+) -> str:
     """Write a structure into a PDB file.
 
     Parameters
@@ -71,7 +73,7 @@ def to_pdb(
                 name = str(atom["name"])
                 if boltz2:
                     atom_name = str(atom["name"])
-                    atom_key = re.sub(r"\d", "", atom_name)
+                    atom_key = RE_DIGIT.sub("", atom_name)
                     if atom_key in const.ambiguous_atoms:
                         if isinstance(const.ambiguous_atoms[atom_key], str):
                             element = const.ambiguous_atoms[atom_key]
