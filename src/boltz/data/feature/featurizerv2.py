@@ -1,10 +1,10 @@
 import math
-from typing import Optional
 from collections import deque
+from typing import Optional
+
 import numba
 import numpy as np
 import numpy.typing as npt
-import rdkit.Chem.Descriptors
 import torch
 from numba import types
 from rdkit.Chem import Mol
@@ -262,7 +262,6 @@ def construct_paired_msa(  # noqa: C901, PLR0915, PLR0912
             msa_residues = data.msa[chain_id].residues
             first_residues = msa_residues[first_start:first_end]
 
-            warning = "Warning: MSA does not match input sequence, creating dummy."
             if len(residues) == len(first_residues):
                 # If there is a mismatch, check if it is between MET & UNK
                 # If so, replace the first sequence with the input sequence.
@@ -280,22 +279,8 @@ def construct_paired_msa(  # noqa: C901, PLR0915, PLR0912
                             "res_type"
                         ]
                     else:
-                        print(
-                            warning,
-                            "1",
-                            residues["res_type"],
-                            first_residues["res_type"],
-                            data.record.id,
-                        )
                         msa[chain_id] = dummy_msa(residues)
             else:
-                print(
-                    warning,
-                    "2",
-                    residues["res_type"],
-                    first_residues["res_type"],
-                    data.record.id,
-                )
                 msa[chain_id] = dummy_msa(residues)
         else:
             msa[chain_id] = dummy_msa(residues)
@@ -333,8 +318,8 @@ def construct_paired_msa(  # noqa: C901, PLR0915, PLR0912
     pairing = []
 
     # Start with the first sequence for each chain
-    is_paired.append({c: 1 for c in chain_ids})
-    pairing.append({c: 0 for c in chain_ids})
+    is_paired.append(dict.fromkeys(chain_ids, 1))
+    pairing.append(dict.fromkeys(chain_ids, 0))
 
     # Then add up to 8191 paired rows
     for _, pairs in taxonomy_map:
@@ -410,7 +395,7 @@ def construct_paired_msa(  # noqa: C901, PLR0915, PLR0912
         if num_seqs > max_seqs:
             indices = random.choice(
                 np.arange(1, num_seqs), size=max_seqs - 1, replace=False
-            )  # noqa: NPY002
+            )
             pairing = [pairing[0]] + [pairing[i] for i in indices]
             is_paired = [is_paired[0]] + [is_paired[i] for i in indices]
     else:
@@ -421,8 +406,9 @@ def construct_paired_msa(  # noqa: C901, PLR0915, PLR0912
     # Map (chain_id, seq_idx, res_idx) to deletion
     deletions = numba.typed.Dict.empty(
         key_type=numba.types.Tuple(
-            [numba.types.int64, numba.types.int64, numba.types.int64]),
-        value_type=numba.types.int64
+            [numba.types.int64, numba.types.int64, numba.types.int64]
+        ),
+        value_type=numba.types.int64,
     )
     for chain_id, chain_msa in msa.items():
         chain_deletions = chain_msa.deletions
@@ -668,15 +654,14 @@ def process_token_features(  # noqa: C901, PLR0915, PLR0912
             )
         ]
     )
-    if data.record is not None:
-        if (
-            override_method is None
-            and data.record.structure.method is not None
-            and data.record.structure.method.lower() in const.method_types_ids
-        ):
-            method = (method * 0) + const.method_types_ids[
-                data.record.structure.method.lower()
-            ]
+    if data.record is not None and (
+        override_method is None
+        and data.record.structure.method is not None
+        and data.record.structure.method.lower() in const.method_types_ids
+    ):
+        method = (method * 0) + const.method_types_ids[
+            data.record.structure.method.lower()
+        ]
 
     method_feature = from_numpy(method).long()
 
@@ -714,7 +699,7 @@ def process_token_features(  # noqa: C901, PLR0915, PLR0912
     contact_threshold = np.zeros((len(token_data), len(token_data)))
 
     if inference_pocket_constraints is not None:
-        for binder, contacts, max_distance, force in inference_pocket_constraints:
+        for binder, contacts, max_distance, _force in inference_pocket_constraints:
             binder_mask = token_data["asym_id"] == binder
 
             for idx, token in enumerate(token_data):
@@ -735,7 +720,7 @@ def process_token_features(  # noqa: C901, PLR0915, PLR0912
                     contact_threshold[idx, binder_mask] = max_distance
 
     if inference_contact_constraints is not None:
-        for token1, token2, max_distance, force in inference_contact_constraints:
+        for token1, token2, max_distance, _force in inference_contact_constraints:
             for idx1, _token1 in enumerate(token_data):
                 if (
                     _token1["mol_type"] != const.chain_type_ids["NONPOLYMER"]
@@ -771,9 +756,8 @@ def process_token_features(  # noqa: C901, PLR0915, PLR0912
             ]
         )
 
-        if len(binder_asym_ids) == 0:
-            if not only_ligand_binder_pocket:
-                binder_asym_ids = np.unique(token_data["asym_id"])
+        if len(binder_asym_ids) == 0 and not only_ligand_binder_pocket:
+            binder_asym_ids = np.unique(token_data["asym_id"])
 
         while random.random() < binder_pocket_conditioned_prop:
             if len(binder_asym_ids) == 0:
@@ -1052,7 +1036,7 @@ def process_token_features(  # noqa: C901, PLR0915, PLR0912
     cyclic = from_numpy(
         np.array(
             [
-                (cyclic_ids[asym_id_iter] if asym_id_iter in cyclic_ids else 0)
+                (cyclic_ids.get(asym_id_iter, 0))
                 for asym_id_iter in token_data["asym_id"]
             ]
         )
@@ -1285,28 +1269,15 @@ def process_atom_features(
             if token["atom_num"] < 3 or res_type in ["PAD", "UNK", "-"]:
                 idx_frame_a, idx_frame_b, idx_frame_c = 0, 0, 0
                 mask_frame = False
-            elif (token["mol_type"] == const.chain_type_ids["PROTEIN"]) and (
+            elif ((token["mol_type"] == const.chain_type_ids["PROTEIN"]) and (
                 res_name in const.ref_atoms
-            ):
-                idx_frame_a, idx_frame_b, idx_frame_c = (
-                    const.ref_atoms[res_name].index("N"),
-                    const.ref_atoms[res_name].index("CA"),
-                    const.ref_atoms[res_name].index("C"),
-                )
-                mask_frame = (
-                    token_atoms["is_present"][idx_frame_a]
-                    and token_atoms["is_present"][idx_frame_b]
-                    and token_atoms["is_present"][idx_frame_c]
-                )
-            elif (
+            )) or ((
                 token["mol_type"] == const.chain_type_ids["DNA"]
                 or token["mol_type"] == const.chain_type_ids["RNA"]
-            ) and (res_name in const.ref_atoms):
-                idx_frame_a, idx_frame_b, idx_frame_c = (
-                    const.ref_atoms[res_name].index("C1'"),
-                    const.ref_atoms[res_name].index("C3'"),
-                    const.ref_atoms[res_name].index("C4'"),
-                )
+            ) and (res_name in const.ref_atoms)):
+                idx_frame_a, idx_frame_b, idx_frame_c = const.res_to_frame_atom_ids[
+                    res_name
+                ]
                 mask_frame = (
                     token_atoms["is_present"][idx_frame_a]
                     and token_atoms["is_present"][idx_frame_b]
@@ -1611,7 +1582,8 @@ def process_msa_features(
     )  # (N_MSA, N_RES, N_AA)
 
     # Prepare features
-    assert torch.all(msa >= 0) and torch.all(msa < const.num_tokens)
+    assert torch.all(msa >= 0)
+    assert torch.all(msa < const.num_tokens)
     msa_one_hot = torch.nn.functional.one_hot(msa, num_classes=const.num_tokens)
     msa_mask = torch.ones_like(msa)
     profile = msa_one_hot.float().mean(dim=0)
@@ -1645,16 +1617,15 @@ def process_msa_features(
             "deletion_mean_affinity": deletion_mean,
             "profile_affinity": profile,
         }
-    else:
-        return {
-            "msa": msa,
-            "msa_paired": paired,
-            "deletion_value": deletion,
-            "has_deletion": has_deletion,
-            "deletion_mean": deletion_mean,
-            "profile": profile,
-            "msa_mask": msa_mask,
-        }
+    return {
+        "msa": msa,
+        "msa_paired": paired,
+        "deletion_value": deletion,
+        "has_deletion": has_deletion,
+        "deletion_mean": deletion_mean,
+        "profile": profile,
+        "msa_mask": msa_mask,
+    }
 
 
 def load_dummy_templates_features(tdim: int, num_tokens: int) -> dict:
@@ -1893,20 +1864,18 @@ def process_ensemble_features(
             "Number of conformers sampled must be 1 with fix_single_ensemble=True."
         )
         ensemble_ref_idxs = np.array([0])
+    elif ensemble_sample_replacement:
+        # Used in training
+        ensemble_ref_idxs = random.integers(0, s_ensemble_num, (num_ensembles,))
+    # Used in validation
+    elif s_ensemble_num < num_ensembles:
+        # Take all available conformers
+        ensemble_ref_idxs = np.arange(0, s_ensemble_num)
     else:
-        if ensemble_sample_replacement:
-            # Used in training
-            ensemble_ref_idxs = random.integers(0, s_ensemble_num, (num_ensembles,))
-        else:
-            # Used in validation
-            if s_ensemble_num < num_ensembles:
-                # Take all available conformers
-                ensemble_ref_idxs = np.arange(0, s_ensemble_num)
-            else:
-                # Sample without replacement
-                ensemble_ref_idxs = random.choice(
-                    s_ensemble_num, num_ensembles, replace=False
-                )
+        # Sample without replacement
+        ensemble_ref_idxs = random.choice(
+            s_ensemble_num, num_ensembles, replace=False
+        )
 
     ensemble_features = {
         "ensemble_ref_idxs": torch.Tensor(ensemble_ref_idxs).long(),
@@ -2093,7 +2062,7 @@ def process_contact_feature_constraints(
         if not force:
             continue
 
-        for idx1, _token1 in enumerate(token_data):
+        for _idx1, _token1 in enumerate(token_data):
             if (
                 _token1["mol_type"] != const.chain_type_ids["NONPOLYMER"]
                 and (_token1["asym_id"], _token1["res_idx"]) == token1
@@ -2101,7 +2070,7 @@ def process_contact_feature_constraints(
                 _token1["mol_type"] == const.chain_type_ids["NONPOLYMER"]
                 and (_token1["asym_id"], _token1["atom_idx"]) == token1
             ):
-                for idx2, _token2 in enumerate(token_data):
+                for _idx2, _token2 in enumerate(token_data):
                     if (
                         _token2["mol_type"] != const.chain_type_ids["NONPOLYMER"]
                         and (_token2["asym_id"], _token2["res_idx"]) == token2
@@ -2330,8 +2299,8 @@ class Boltz2Featurizer:
             chain_constraint_features = process_chain_feature_constraints(data)
             contact_constraint_features = process_contact_feature_constraints(
                 data=data,
-                inference_pocket_constraints=inference_pocket_constraints if inference_pocket_constraints else [],
-                inference_contact_constraints=inference_contact_constraints if inference_contact_constraints else [],
+                inference_pocket_constraints=inference_pocket_constraints or [],
+                inference_contact_constraints=inference_contact_constraints or [],
             )
 
         return {
