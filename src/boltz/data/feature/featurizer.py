@@ -742,11 +742,7 @@ def process_atom_features(
         elif (token["mol_type"] == const.chain_type_ids["PROTEIN"]) and (
             res_type in const.ref_atoms
         ):
-            idx_frame_a, idx_frame_b, idx_frame_c = (
-                const.ref_atoms[res_type].index("N"),
-                const.ref_atoms[res_type].index("CA"),
-                const.ref_atoms[res_type].index("C"),
-            )
+            idx_frame_a, idx_frame_b, idx_frame_c = const.res_to_frame_atom_ids[res_type]
             mask_frame = (
                 token_atoms["is_present"][idx_frame_a]
                 and token_atoms["is_present"][idx_frame_b]
@@ -756,11 +752,7 @@ def process_atom_features(
             token["mol_type"] == const.chain_type_ids["DNA"]
             or token["mol_type"] == const.chain_type_ids["RNA"]
         ) and (res_type in const.ref_atoms):
-            idx_frame_a, idx_frame_b, idx_frame_c = (
-                const.ref_atoms[res_type].index("C1'"),
-                const.ref_atoms[res_type].index("C3'"),
-                const.ref_atoms[res_type].index("C4'"),
-            )
+            idx_frame_a, idx_frame_b, idx_frame_c = const.res_to_frame_atom_ids[res_type]
             mask_frame = (
                 token_atoms["is_present"][idx_frame_a]
                 and token_atoms["is_present"][idx_frame_b]
