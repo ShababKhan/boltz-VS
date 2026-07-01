@@ -257,6 +257,15 @@ ref_atoms = {
     "DN": ["P", "OP1", "OP2", "O5'", "C5'", "C4'", "O4'", "C3'", "O3'", "C2'", "C1'"]
 }
 
+# ⚡ Bolt Optimization: Precompute frame atom indices for proteins and DNA/RNA.
+# Replacing O(N) `.index()` calls inside the featurizer loops with an O(1) dictionary lookup.
+res_to_frame_atom_ids = {}
+for _res, _atoms in ref_atoms.items():
+    if "N" in _atoms and "CA" in _atoms and "C" in _atoms:
+        res_to_frame_atom_ids[_res] = (_atoms.index("N"), _atoms.index("CA"), _atoms.index("C"))
+    elif "C1'" in _atoms and "C3'" in _atoms and "C4'" in _atoms:
+        res_to_frame_atom_ids[_res] = (_atoms.index("C1'"), _atoms.index("C3'"), _atoms.index("C4'"))
+
 protein_backbone_atom_names = ["N", "CA", "C", "O"]
 nucleic_backbone_atom_names = ["P", "OP1", "OP2", "O5'", "C5'", "C4'", "O4'", "C3'", "O3'", "C2'", "O2'", "C1'"]
 
