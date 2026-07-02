@@ -4,3 +4,6 @@
 ## 2024-05-19 - Optimized deduplication in MSA generation
 **Learning:** In `src/boltz/data/msa/mmseqs2.py`, maintaining sequence uniqueness and mapping sequence order used an $O(N^2)$ list membership check (`x not in list`) combined with `.index()` on a list comprehension. For very large sequence lists submitted for MSAs, this is exceptionally slow.
 **Action:** Replace $O(N^2)$ tracking in list comprehensions with $O(N)$ dictionary-based order-preserving deduplication (`list(dict.fromkeys(seqs))`) and $O(1)$ index lookups (`{seq: i for i, seq in enumerate(unique)}`) when maintaining uniqueness constraints over large iterables.
+## 2024-05-18 - Precomputing dictionary values for constants
+**Learning:** O(N) list index lookups like `const.ref_atoms[res_type].index("N")` inside featurizer loops cause significant performance overhead because they run per token across the whole system.
+**Action:** Always precompute these index lookups as O(1) dictionary mappings in `src/boltz/data/const.py` to maintain efficient array creation.
