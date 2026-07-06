@@ -4,3 +4,7 @@
 ## 2024-05-19 - Optimized deduplication in MSA generation
 **Learning:** In `src/boltz/data/msa/mmseqs2.py`, maintaining sequence uniqueness and mapping sequence order used an $O(N^2)$ list membership check (`x not in list`) combined with `.index()` on a list comprehension. For very large sequence lists submitted for MSAs, this is exceptionally slow.
 **Action:** Replace $O(N^2)$ tracking in list comprehensions with $O(N)$ dictionary-based order-preserving deduplication (`list(dict.fromkeys(seqs))`) and $O(1)$ index lookups (`{seq: i for i, seq in enumerate(unique)}`) when maintaining uniqueness constraints over large iterables.
+
+## $(date +%Y-%m-%d) - O(N²) List Indexing Anti-pattern in Symmetry
+**Learning:** Found critical bottleneck in `mol.py` and `feature/symmetry.py` where O(N) `.index()` lookups inside O(M) loops caused O(N×M) time complexity.
+**Action:** Replace `list.index()` calls inside hot loops with precomputed `O(1)` dictionary lookups (hash maps).
