@@ -376,6 +376,15 @@ res_to_disto_atom_id = {
     for res, atom in res_to_disto_atom.items()
 }
 
+res_to_frame_atom_ids = {}
+for _res, _atoms in ref_atoms.items():
+    if not _atoms:
+        continue
+    if "C1'" in _atoms and "C3'" in _atoms and "C4'" in _atoms:
+        res_to_frame_atom_ids[_res] = (_atoms.index("C1'"), _atoms.index("C3'"), _atoms.index("C4'"))
+    elif "N" in _atoms and "CA" in _atoms and "C" in _atoms:
+        res_to_frame_atom_ids[_res] = (_atoms.index("N"), _atoms.index("CA"), _atoms.index("C"))
+
 # fmt: on
 
 ####################################################################################################
