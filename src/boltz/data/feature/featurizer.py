@@ -1,7 +1,8 @@
 import math
 import random
-from typing import Optional
 from collections import deque
+from typing import Optional
+
 import numba
 import numpy as np
 import numpy.typing as npt
@@ -219,8 +220,8 @@ def construct_paired_msa(  # noqa: C901, PLR0915, PLR0912
     pairing = []
 
     # Start with the first sequence for each chain
-    is_paired.append({c: 1 for c in chain_ids})
-    pairing.append({c: 0 for c in chain_ids})
+    is_paired.append(dict.fromkeys(chain_ids, 1))
+    pairing.append(dict.fromkeys(chain_ids, 0))
 
     # Then add up to 8191 paired rows
     for _, pairs in taxonomy_map:
@@ -296,7 +297,7 @@ def construct_paired_msa(  # noqa: C901, PLR0915, PLR0912
         if num_seqs > max_seqs:
             indices = np.random.choice(
                 list(range(1, num_seqs)), size=max_seqs - 1, replace=False
-            )  # noqa: NPY002
+            )
             pairing = [pairing[0]] + [pairing[i] for i in indices]
             is_paired = [is_paired[0]] + [is_paired[i] for i in indices]
     else:
@@ -739,28 +740,8 @@ def process_atom_features(
         if token["atom_num"] < 3 or res_type in ["PAD", "UNK", "-"]:
             idx_frame_a, idx_frame_b, idx_frame_c = 0, 0, 0
             mask_frame = False
-        elif (token["mol_type"] == const.chain_type_ids["PROTEIN"]) and (
-            res_type in const.ref_atoms
-        ):
-            idx_frame_a, idx_frame_b, idx_frame_c = (
-                const.ref_atoms[res_type].index("N"),
-                const.ref_atoms[res_type].index("CA"),
-                const.ref_atoms[res_type].index("C"),
-            )
-            mask_frame = (
-                token_atoms["is_present"][idx_frame_a]
-                and token_atoms["is_present"][idx_frame_b]
-                and token_atoms["is_present"][idx_frame_c]
-            )
-        elif (
-            token["mol_type"] == const.chain_type_ids["DNA"]
-            or token["mol_type"] == const.chain_type_ids["RNA"]
-        ) and (res_type in const.ref_atoms):
-            idx_frame_a, idx_frame_b, idx_frame_c = (
-                const.ref_atoms[res_type].index("C1'"),
-                const.ref_atoms[res_type].index("C3'"),
-                const.ref_atoms[res_type].index("C4'"),
-            )
+        elif res_type in const.res_to_frame_atom_ids:
+            idx_frame_a, idx_frame_b, idx_frame_c = const.res_to_frame_atom_ids[res_type]
             mask_frame = (
                 token_atoms["is_present"][idx_frame_a]
                 and token_atoms["is_present"][idx_frame_b]

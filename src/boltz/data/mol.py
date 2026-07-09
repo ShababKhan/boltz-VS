@@ -548,8 +548,9 @@ def get_chain_symmetries(cropped, max_n_symmetries=100):
     all_coords = np.concatenate(all_coords, axis=0)
     # Compute backmapping from token to all coords
     crop_to_all_atom_map = []
+    chain_asym_id_to_idx = {asym_id: i for i, asym_id in enumerate(chain_asym_id)}
     for token in cropped.tokens:
-        chain_idx = chain_asym_id.index(token["asym_id"])
+        chain_idx = chain_asym_id_to_idx[token["asym_id"]]
         start = (
             chain_atom_idx[chain_idx] - original_atom_idx[chain_idx] + token["atom_idx"]
         )
@@ -746,8 +747,9 @@ def get_ligand_symmetries(cropped, symmetries, return_physical_metrics=False):
             planar_double_bond_index,
         ) = symmetries[mol_name]
         # Get indices of mol_atom_names_ccd that are in mol_atom_names
+        name_to_ccd_index = {name: i for i, name in enumerate(mol_atom_names_ccd)}
         ccd_to_valid_ids = {
-            mol_atom_names_ccd.index(name): i
+            name_to_ccd_index[name]: i
             for i, name in enumerate(mol_atom_names)
         }
         ccd_to_valid_id_array = np.array(
