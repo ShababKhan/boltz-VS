@@ -4,3 +4,6 @@
 ## 2024-05-19 - Optimized deduplication in MSA generation
 **Learning:** In `src/boltz/data/msa/mmseqs2.py`, maintaining sequence uniqueness and mapping sequence order used an $O(N^2)$ list membership check (`x not in list`) combined with `.index()` on a list comprehension. For very large sequence lists submitted for MSAs, this is exceptionally slow.
 **Action:** Replace $O(N^2)$ tracking in list comprehensions with $O(N)$ dictionary-based order-preserving deduplication (`list(dict.fromkeys(seqs))`) and $O(1)$ index lookups (`{seq: i for i, seq in enumerate(unique)}`) when maintaining uniqueness constraints over large iterables.
+## 2024-05-19 - [Ruff Auto-fix Side Effects]
+**Learning:** `ruff check --fix` can aggressively remove intentional `# noqa: NPY002` comments (and potentially others) during auto-formatting, causing subsequent linting failures in CI if not manually restored.
+**Action:** Always carefully review the git diff after running `ruff check --fix` and restore any stripped `# noqa` comments before committing.
